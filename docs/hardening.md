@@ -60,7 +60,24 @@ Stop:
 python -m memsu service stop
 ```
 
-The MVP uses a PID file under `MEMSU_HOME` or `~/.memsu`.
+The local service uses a PID file under `MEMSU_HOME` or `~/.memsu`.
+
+Install user-level Windows logon startup:
+
+```powershell
+.\scripts\install_windows_task.ps1
+# preview only:
+.\scripts\install_windows_task.ps1 -WhatIf
+```
+
+Remove the logon task:
+
+```powershell
+.\scripts\uninstall_windows_task.ps1
+```
+
+This is intentionally a simple Scheduled Task wrapper around
+`scripts\start_service.ps1`, not a native Windows service.
 
 ## Structured Logs
 

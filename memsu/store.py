@@ -39,7 +39,6 @@ MEMORY_TYPES = {
 
 ACTIVE_STATUS = "active"
 PENDING_CANDIDATE_STATUS = "pending"
-SUGGESTION_COOLDOWN_SECONDS = 300
 SCHEMA_VERSION = 7
 
 
@@ -415,10 +414,14 @@ class MemSuStore:
         event_id: str = "",
         limit: int = 50,
         auto_accept: bool = False,
+        method: str = "rule",
     ) -> dict[str, Any]:
-        from .extractor import extract_candidates_from_event
+        from .extractor import extract_candidates_from_event, extract_candidates_with_llm
 
         self.init()
+        method = (method or "rule").lower()
+        if method not in {"rule", "llm"}:
+            raise ValueError(f"unsupported extraction method: {method}")
         if event_id:
             event = self.get_event(event_id)
             events = [event] if event else []
@@ -431,7 +434,10 @@ class MemSuStore:
         for event in events:
             if not event:
                 continue
-            drafts = extract_candidates_from_event(event)
+            if method == "llm":
+                drafts = extract_candidates_with_llm(event)
+            else:
+                drafts = extract_candidates_from_event(event)
             if not drafts:
                 skipped += 1
                 continue
@@ -640,9 +646,10 @@ class MemSuStore:
         sensitivity: str = "normal",
         metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        from .policy import evaluate_action
+        from .policy import evaluate_action, load_policy_config
 
         self.init()
+        config = load_policy_config()
         decision = evaluate_action(
             action_type,
             description=description,
@@ -658,14 +665,18 @@ class MemSuStore:
             reason = decision.reason
             requires_confirmation = decision.requires_confirmation
             if decision.risk_level == "L2":
-                if (metadata or {}).get("quiet_hours_active") is True:
+                quiet_hours_active = bool(
+                    (metadata or {}).get("quiet_hours_active", config.get("quiet_hours_active", False))
+                )
+                cooldown_seconds = int(config.get("suggestion_cooldown_seconds", 300))
+                if quiet_hours_active:
                     proposal_decision = "defer"
                     status = "deferred"
                     reason = "Quiet hours are active; suggestion is deferred."
                 elif self._has_recent_policy_proposal(
                     conn,
                     action_type=decision.action_type,
-                    since=utc_ago(SUGGESTION_COOLDOWN_SECONDS),
+                    since=utc_ago(cooldown_seconds),
                 ):
                     proposal_decision = "defer"
                     status = "deferred"

@@ -30,9 +30,26 @@ python -m memsu policy evaluate --action-type suggestion --description "suggest 
 
 Suggestion controls:
 
-- L2 suggestions are rate-limited by action type for 5 minutes.
-- L2 suggestions can be deferred during quiet hours by setting
-  `{"quiet_hours_active": true}` in metadata.
+- L2 suggestions are rate-limited by action type.
+- L2 suggestions can be deferred during quiet hours.
+- Proposal metadata can override quiet-hour state for a single evaluation.
+
+Defaults are read from `MEMSU_HOME\policy.yaml` or `~\.memsu\policy.yaml`:
+
+```yaml
+defaults:
+  proactive_external_actions: false
+  cross_agent_sensitive_sharing: false
+  hard_delete_without_confirmation: false
+  suggestion_cooldown_seconds: 300
+  quiet_hours_active: false
+```
+
+Per-proposal quiet-hour override:
+
+```powershell
+python -m memsu policy evaluate --action-type suggestion --description "suggest a reminder" --metadata "{""quiet_hours_active"":true}"
+```
 
 Requires confirmation:
 

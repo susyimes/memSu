@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from memsu.adapters import (
+    ingest_agent_transcript,
     ingest_codex_transcript,
     parse_codex_transcript,
     record_shell_command,
@@ -71,6 +72,28 @@ class AdapterTests(unittest.TestCase):
         self.assertEqual(1, extracted["created_count"])
         self.assertEqual("project:memSu", extracted["candidates"][0]["scope"])
 
+    def test_generic_transcript_adapter_records_configured_agent(self) -> None:
+        transcript = self.root / "gemini.md"
+        transcript.write_text(
+            "# User\nDecision: generic transcript ingestion stays explicit.\n",
+            encoding="utf-8",
+        )
+
+        result = ingest_agent_transcript(
+            self.store,
+            agent="gemini",
+            path=str(transcript),
+            workspace="memSu",
+            repo="susyimes/memSu",
+            thread_id="thread-2",
+        )
+
+        self.assertEqual(1, result["count"])
+        event = self.store.get_event(result["events"][0]["event_id"])
+        self.assertEqual("gemini", event["source_agent"])
+        self.assertEqual("generic_transcript", event["metadata"]["adapter"])
+        self.assertEqual("thread-2", event["thread_id"])
+
     def test_git_adapter_snapshots_repo(self) -> None:
         repo = self.root / "repo"
         repo.mkdir()
@@ -91,4 +114,3 @@ class AdapterTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

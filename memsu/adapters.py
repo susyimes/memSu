@@ -141,6 +141,43 @@ def ingest_codex_transcript(
     return {"count": len(appended), "events": appended}
 
 
+def ingest_agent_transcript(
+    store: MemSuStore,
+    *,
+    agent: str,
+    path: str,
+    workspace: str = "",
+    repo: str = "",
+    thread_id: str = "",
+    sensitivity: str = "normal",
+) -> dict[str, Any]:
+    transcript_path = Path(path).expanduser().resolve()
+    text = transcript_path.read_text(encoding="utf-8", errors="replace")
+    events = parse_codex_transcript(text)
+    if not events:
+        events = [{"role": "unknown", "content": truncate(text)}]
+
+    appended: list[dict[str, Any]] = []
+    for index, event in enumerate(events, start=1):
+        role = event.get("role") or "unknown"
+        appended.append(
+            store.append_event(
+                source_agent=agent,
+                source_type="transcript",
+                actor=role,
+                event_type="conversation_turn",
+                content=truncate(event.get("content") or ""),
+                workspace=workspace,
+                repo=repo,
+                thread_id=thread_id,
+                content_ref=str(transcript_path),
+                sensitivity=sensitivity,
+                metadata={"entry_index": index, "role": role, "adapter": "generic_transcript"},
+            )
+        )
+    return {"count": len(appended), "events": appended}
+
+
 def record_workflow_result(
     store: MemSuStore,
     *,
@@ -250,4 +287,3 @@ def remote_to_repo_name(remote: str) -> str:
     if marker in cleaned:
         return cleaned.split(marker, 1)[1]
     return ""
-

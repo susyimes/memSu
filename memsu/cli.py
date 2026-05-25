@@ -6,6 +6,7 @@ import sys
 from typing import Any
 
 from .adapters import (
+    ingest_agent_transcript,
     ingest_codex_transcript,
     record_shell_command,
     record_workflow_result,
@@ -156,6 +157,20 @@ def cmd_adapter_codex(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_adapter_transcript(args: argparse.Namespace) -> int:
+    result = ingest_agent_transcript(
+        MemSuStore(args.db),
+        agent=args.agent,
+        path=args.path,
+        workspace=args.workspace,
+        repo=args.repo,
+        thread_id=args.thread_id,
+        sensitivity=args.sensitivity,
+    )
+    print_json(result)
+    return 0
+
+
 def cmd_adapter_workflow(args: argparse.Namespace) -> int:
     artifact_refs = json.loads(args.artifact_refs) if args.artifact_refs else []
     result = record_workflow_result(
@@ -179,6 +194,7 @@ def cmd_extract(args: argparse.Namespace) -> int:
         event_id=args.event_id,
         limit=args.limit,
         auto_accept=args.auto_accept,
+        method=args.method,
     )
     print_json(result)
     return 0
@@ -439,6 +455,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_adapter_codex.add_argument("--sensitivity", default="normal")
     p_adapter_codex.set_defaults(func=cmd_adapter_codex)
 
+    p_adapter_transcript = adapter_sub.add_parser("transcript", help="Ingest a generic agent transcript file")
+    p_adapter_transcript.add_argument("--agent", required=True)
+    p_adapter_transcript.add_argument("path")
+    p_adapter_transcript.add_argument("--workspace", default="")
+    p_adapter_transcript.add_argument("--repo", default="")
+    p_adapter_transcript.add_argument("--thread-id", default="")
+    p_adapter_transcript.add_argument("--sensitivity", default="normal")
+    p_adapter_transcript.set_defaults(func=cmd_adapter_transcript)
+
     p_adapter_workflow = adapter_sub.add_parser("workflow", help="Record a workflow result")
     p_adapter_workflow.add_argument("--name", required=True)
     p_adapter_workflow.add_argument("--status", required=True)
@@ -455,6 +480,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_extract.add_argument("--event-id", default="")
     p_extract.add_argument("--limit", type=int, default=50)
     p_extract.add_argument("--auto-accept", action="store_true")
+    p_extract.add_argument("--method", choices=["rule", "llm"], default="rule")
     p_extract.set_defaults(func=cmd_extract)
 
     p_candidate = sub.add_parser("candidate", help="Memory candidate operations")

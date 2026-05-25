@@ -137,6 +137,9 @@ scripts/
   install_hermes.ps1
   doctor.ps1
   start_service.ps1
+  status_service.ps1
+  install_windows_task.ps1
+  uninstall_windows_task.ps1
 hermes/
   plugins/memory/memsu/
   skills/memory-capture/
@@ -242,9 +245,19 @@ python -m memsu candidate list --scope project:memSu
 python -m memsu candidate accept <candidate_id>
 ```
 
+Optional OpenAI-compatible LLM extraction:
+
+```powershell
+$env:MEMSU_LLM_ENDPOINT = "http://127.0.0.1:11434/v1/chat/completions"
+$env:MEMSU_LLM_MODEL = "local-model"
+python -m memsu extract --method llm
+```
+
 Record local agent and workflow observations:
 
 ```powershell
+python -m memsu adapter codex .\codex-session.md --workspace memSu --repo susyimes/memSu
+python -m memsu adapter transcript --agent gemini .\gemini-session.md --workspace memSu --repo susyimes/memSu
 python -m memsu adapter git --repo-path . --workspace memSu
 python -m memsu adapter shell --command "python -m unittest discover -s tests" --exit-code 0 --workspace memSu --repo susyimes/memSu
 python -m memsu adapter workflow --name tests --status passed --summary "unit tests passed" --workspace memSu --repo susyimes/memSu
@@ -283,6 +296,12 @@ python -m memsu vector rebuild
 python -m memsu service status
 ```
 
+Install as a Windows logon task:
+
+```powershell
+.\scripts\install_windows_task.ps1
+```
+
 See [docs/hardening.md](docs/hardening.md) for hardening details.
 
 Install into Hermes:
@@ -318,11 +337,11 @@ Implemented:
 
 - SQLite event log
 - scoped memory items
-- rule-based candidate extraction from events
+- rule-based and optional OpenAI-compatible LLM candidate extraction from events
 - candidate accept and reject flow
 - possible conflict hints for similar same-scope memories
-- explicit shell, git, Codex transcript, and workflow adapters
-- L0-L4 proactive policy engine with action proposals, rate limits, quiet-hour deferral, and policy event log
+- explicit shell, git, Codex transcript, generic transcript, and workflow adapters
+- L0-L4 proactive policy engine with action proposals, configurable rate limits, quiet-hour deferral, and policy event log
 - curator jobs for dedupe, stale detection, summaries, and conflict review queue
 - production hardening tools for migration status, backup, export, privacy review, service status, and sparse vector recall
 - CLI commands for init, doctor, event append/list, extract, candidate review, retain, recall, audit, and forget
@@ -330,16 +349,18 @@ Implemented:
 - Hermes external memory provider skeleton
 - Hermes memory skills
 - bootstrap prompt
-- PowerShell installer, doctor, and service startup scripts
+- PowerShell installer, doctor, service startup/status, and Windows Scheduled Task scripts
 
 The current implementation proves the first core loop:
 
-1. Observe Hermes and one coding agent.
+1. Observe Hermes, local coding agents, shell/git activity, and workflows.
 2. Store structured events locally.
-3. Extract scoped memory.
+3. Extract scoped memory with review-first candidate approval.
 4. Serve recall back to Hermes through a memory provider.
 5. Provide audit and forget operations.
 
-Candidate extraction is rule-based and review-first in the MVP. LLM-based
-extraction, curator jobs, richer policy enforcement, and multi-agent adapters
-belong to later phases.
+Current limitations: observation is explicit adapter ingestion rather than hidden
+monitoring; LLM extraction is optional, skips sensitive events, and still
+creates review-first candidates; the policy parser supports a small local
+defaults file instead of a full policy language; Windows service packaging is a
+user-level Scheduled Task rather than a native service.

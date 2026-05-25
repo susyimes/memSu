@@ -117,6 +117,10 @@ class MemSuStoreTests(unittest.TestCase):
             candidate["metadata"]["possible_conflict_item_ids"],
         )
 
+    def test_extract_rejects_unknown_method(self) -> None:
+        with self.assertRaises(ValueError):
+            self.store.extract_candidates(method="unknown")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -5,6 +5,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 from .adapters import (
+    ingest_agent_transcript,
     ingest_codex_transcript,
     record_shell_command,
     record_workflow_result,
@@ -131,6 +132,10 @@ class MemSuHandler(BaseHTTPRequestHandler):
                 result = ingest_codex_transcript(self.store, **body)
                 write_json(self, 200, result)
                 return
+            if self.path == "/adapters/transcript":
+                result = ingest_agent_transcript(self.store, **body)
+                write_json(self, 200, result)
+                return
             if self.path == "/adapters/workflow":
                 result = record_workflow_result(self.store, **body)
                 write_json(self, 200, result)
@@ -160,6 +165,7 @@ class MemSuHandler(BaseHTTPRequestHandler):
                     event_id=body.get("event_id", ""),
                     limit=int(body.get("limit", 50)),
                     auto_accept=bool(body.get("auto_accept", False)),
+                    method=body.get("method", "rule"),
                 )
                 write_json(self, 200, result)
                 return

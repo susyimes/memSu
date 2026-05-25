@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -100,6 +101,31 @@ class PolicyTests(unittest.TestCase):
 
         self.assertEqual("L2", proposal["risk_level"])
         self.assertEqual("deferred", proposal["status"])
+
+    def test_policy_defaults_are_loaded_from_memsu_home(self) -> None:
+        policy_path = Path(self.temp_dir.name) / "policy.yaml"
+        policy_path.write_text(
+            "defaults:\n"
+            "  suggestion_cooldown_seconds: 0\n"
+            "  quiet_hours_active: true\n",
+            encoding="utf-8",
+        )
+        previous = os.environ.get("MEMSU_HOME")
+        os.environ["MEMSU_HOME"] = self.temp_dir.name
+        try:
+            proposal = self.store.evaluate_policy(
+                action_type="suggestion",
+                description="Suggest using configured quiet hours.",
+            )
+        finally:
+            if previous is None:
+                os.environ.pop("MEMSU_HOME", None)
+            else:
+                os.environ["MEMSU_HOME"] = previous
+
+        self.assertEqual("defer", proposal["decision"])
+        self.assertEqual("deferred", proposal["status"])
+        self.assertEqual("Quiet hours are active; suggestion is deferred.", proposal["reason"])
 
 
 if __name__ == "__main__":

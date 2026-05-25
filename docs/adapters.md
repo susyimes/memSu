@@ -8,6 +8,7 @@ The MVP includes:
 - shell command result adapter
 - git repository snapshot adapter
 - Codex transcript adapter
+- generic agent transcript adapter
 - generic workflow result adapter
 
 Adapters do not automatically accept memory. They append events to the event log.
@@ -55,6 +56,17 @@ Supported formats:
   `# Tool`, or `# Codex`
 - fallback to one transcript event if no structured format is recognized
 
+## Generic Agent Transcript
+
+For Gemini, Kimi, Claude, or another local agent transcript:
+
+```powershell
+python -m memsu adapter transcript --agent gemini .\gemini-session.md --workspace memSu --repo susyimes/memSu
+```
+
+The parser accepts the same NDJSON and Markdown formats as the Codex adapter,
+but records the configured `source_agent`.
+
 ## Workflow
 
 Record a workflow result:
@@ -75,8 +87,8 @@ Equivalent local endpoints:
 - `POST /adapters/shell`
 - `POST /adapters/git`
 - `POST /adapters/codex`
+- `POST /adapters/transcript`
 - `POST /adapters/workflow`
 
 All endpoints write events to the same local store used by `/events`, `/recall`,
 `/audit`, and `/forget`.
-

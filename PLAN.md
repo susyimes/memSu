@@ -8,24 +8,25 @@ Implemented:
 - SQLite-backed event log
 - basic memory item store
 - rule-based candidate extraction pipeline
+- optional OpenAI-compatible LLM candidate extraction pipeline
 - candidate accept and reject flow
 - possible conflict hints for similar same-scope memories
-- explicit shell, git, Codex transcript, and workflow adapters
-- L0-L4 proactive policy engine with action proposals and policy event log
+- explicit shell, git, Codex transcript, generic transcript, and workflow adapters
+- L0-L4 proactive policy engine with action proposals, configurable defaults, and policy event log
 - curator jobs for dedupe, stale detection, summaries, and conflict review queue
 - production hardening tools for migration status, backup, export, privacy review, service status, and sparse vector recall
 - CLI for init, doctor, event append/list, extract, candidate review, retain, recall, audit, and forget
 - local HTTP service
 - Hermes memory provider skeleton
 - Hermes skills and bootstrap prompt
-- PowerShell install, doctor, and service startup scripts
+- PowerShell install, doctor, service startup/status, and Windows Scheduled Task scripts
 
-Not yet implemented:
+Known limitations:
 
-- LLM-based memory extraction
-- richer Codex and other agent adapters
-- richer proactive policy configuration
-- production service packaging beyond local PID supervision
+- LLM extraction requires an explicitly configured OpenAI-compatible endpoint, skips sensitive events, and still creates review-first candidates.
+- Agent observation is explicit transcript/workflow ingestion, not hidden desktop surveillance.
+- Policy configuration currently supports simple local defaults, not a full rule DSL.
+- Windows service packaging uses a user-level Scheduled Task, not a native Windows service.
 
 ## Phase 0: Repository Foundation
 
@@ -160,6 +161,7 @@ Goal: observe local agents and workflows beyond Hermes.
 Deliverables:
 
 - Codex adapter (transcript ingestion implemented)
+- generic agent transcript adapter (implemented)
 - shell/git adapter (implemented)
 - generic workflow log adapter (implemented)
 - adapter documentation (implemented)
@@ -177,7 +179,7 @@ Deliverables:
 
 - policy configuration (default policy file implemented)
 - risk levels L0 to L4 (implemented)
-- rate limits and quiet hours (basic L2 defer behavior implemented)
+- rate limits and quiet hours (configurable L2 defer behavior implemented)
 - confirmation-required action proposals (implemented)
 - policy event log (implemented)
 
@@ -216,7 +218,7 @@ Goal: make memSu reliable as a long-running local service.
 
 Deliverables:
 
-- service supervision (local PID status/stop helpers implemented)
+- service supervision (local PID status/stop helpers and Windows logon task scripts implemented)
 - backups and export (implemented)
 - migration system (schema version table/status implemented)
 - structured logs (JSON server logs implemented)

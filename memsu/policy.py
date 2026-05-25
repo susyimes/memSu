@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
+
+from .paths import default_policy_path
 
 
 L0_ACTIONS = {
@@ -150,3 +153,46 @@ def evaluate_action(
 def normalize_action(action_type: str) -> str:
     return (action_type or "suggestion").strip().lower().replace("-", "_").replace(" ", "_")
 
+
+def load_policy_config(path: str | Path | None = None) -> dict[str, Any]:
+    policy_path = Path(path) if path else default_policy_path()
+    defaults = {
+        "proactive_external_actions": False,
+        "cross_agent_sensitive_sharing": False,
+        "hard_delete_without_confirmation": False,
+        "suggestion_cooldown_seconds": 300,
+        "quiet_hours_active": False,
+    }
+    if not policy_path.exists():
+        return defaults
+
+    in_defaults = False
+    for raw_line in policy_path.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line == "defaults:":
+            in_defaults = True
+            continue
+        if line.endswith(":") and not raw_line.startswith((" ", "\t")):
+            in_defaults = False
+            continue
+        if not in_defaults or ":" not in line:
+            continue
+        key, value = [part.strip() for part in line.split(":", 1)]
+        if key not in defaults:
+            continue
+        defaults[key] = parse_scalar(value)
+    return defaults
+
+
+def parse_scalar(value: str) -> Any:
+    lowered = value.lower()
+    if lowered == "true":
+        return True
+    if lowered == "false":
+        return False
+    try:
+        return int(value)
+    except ValueError:
+        return value
