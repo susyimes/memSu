@@ -61,6 +61,21 @@ class MemSuHandler(BaseHTTPRequestHandler):
             )
             write_json(self, 200, {"candidates": result})
             return
+        if parsed.path == "/policy/proposals":
+            params = parse_qs(parsed.query)
+            result = self.store.list_action_proposals(
+                status=params.get("status", [""])[0],
+                limit=int(params.get("limit", ["50"])[0]),
+            )
+            write_json(self, 200, {"proposals": result})
+            return
+        if parsed.path == "/policy/events":
+            params = parse_qs(parsed.query)
+            result = self.store.list_policy_events(
+                limit=int(params.get("limit", ["50"])[0]),
+            )
+            write_json(self, 200, {"events": result})
+            return
         write_json(self, 404, {"ok": False, "error": "not found"})
 
     def do_POST(self) -> None:
@@ -121,6 +136,23 @@ class MemSuHandler(BaseHTTPRequestHandler):
             if self.path == "/candidates/reject":
                 result = self.store.reject_candidate(
                     body.get("candidate_id", ""), reason=body.get("reason", "")
+                )
+                write_json(self, 200, result)
+                return
+            if self.path == "/policy/evaluate":
+                result = self.store.evaluate_policy(
+                    action_type=body.get("action_type", ""),
+                    description=body.get("description", ""),
+                    sensitivity=body.get("sensitivity", "normal"),
+                    metadata=body.get("metadata") or {},
+                )
+                write_json(self, 200, result)
+                return
+            if self.path == "/policy/decide":
+                result = self.store.decide_action_proposal(
+                    body.get("proposal_id", ""),
+                    decision=body.get("decision", ""),
+                    reason=body.get("reason", ""),
                 )
                 write_json(self, 200, result)
                 return

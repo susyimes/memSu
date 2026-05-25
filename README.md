@@ -252,6 +252,16 @@ python -m memsu adapter workflow --name tests --status passed --summary "unit te
 
 See [docs/adapters.md](docs/adapters.md) for adapter details.
 
+Evaluate proactive policy:
+
+```powershell
+python -m memsu policy evaluate --action-type suggestion --description "suggest creating a skill from repeated workflow"
+python -m memsu policy evaluate --action-type send_message --description "send a summary to a chat"
+python -m memsu policy proposals --status pending_confirmation
+```
+
+See [docs/policy.md](docs/policy.md) for policy details.
+
 Install into Hermes:
 
 ```powershell
@@ -289,6 +299,7 @@ Implemented:
 - candidate accept and reject flow
 - possible conflict hints for similar same-scope memories
 - explicit shell, git, Codex transcript, and workflow adapters
+- L0-L4 proactive policy engine with action proposals, rate limits, quiet-hour deferral, and policy event log
 - CLI commands for init, doctor, event append/list, extract, candidate review, retain, recall, audit, and forget
 - local HTTP service for Hermes integration
 - Hermes external memory provider skeleton

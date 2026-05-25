@@ -28,6 +28,8 @@ defaults:
   proactive_external_actions: false
   cross_agent_sensitive_sharing: false
   hard_delete_without_confirmation: false
+  suggestion_cooldown_seconds: 300
+  quiet_hours_active: false
 """
 
 
@@ -206,6 +208,43 @@ def cmd_candidate_reject(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_policy_evaluate(args: argparse.Namespace) -> int:
+    metadata = json.loads(args.metadata) if args.metadata else {}
+    result = MemSuStore(args.db).evaluate_policy(
+        action_type=args.action_type,
+        description=args.description,
+        sensitivity=args.sensitivity,
+        metadata=metadata,
+    )
+    print_json(result)
+    return 0
+
+
+def cmd_policy_proposals(args: argparse.Namespace) -> int:
+    result = MemSuStore(args.db).list_action_proposals(
+        status=args.status,
+        limit=args.limit,
+    )
+    print_json({"proposals": result})
+    return 0
+
+
+def cmd_policy_decide(args: argparse.Namespace) -> int:
+    result = MemSuStore(args.db).decide_action_proposal(
+        args.proposal_id,
+        decision=args.decision,
+        reason=args.reason,
+    )
+    print_json(result)
+    return 0
+
+
+def cmd_policy_events(args: argparse.Namespace) -> int:
+    result = MemSuStore(args.db).list_policy_events(limit=args.limit)
+    print_json({"events": result})
+    return 0
+
+
 def cmd_retain(args: argparse.Namespace) -> int:
     metadata = json.loads(args.metadata) if args.metadata else {}
     result = MemSuStore(args.db).retain_memory(
@@ -350,6 +389,31 @@ def build_parser() -> argparse.ArgumentParser:
     p_candidate_reject.add_argument("candidate_id")
     p_candidate_reject.add_argument("--reason", default="")
     p_candidate_reject.set_defaults(func=cmd_candidate_reject)
+
+    p_policy = sub.add_parser("policy", help="Evaluate and review proactive action policy")
+    policy_sub = p_policy.add_subparsers(dest="policy_command", required=True)
+
+    p_policy_eval = policy_sub.add_parser("evaluate", help="Evaluate a proposed action")
+    p_policy_eval.add_argument("--action-type", required=True)
+    p_policy_eval.add_argument("--description", default="")
+    p_policy_eval.add_argument("--sensitivity", default="normal")
+    p_policy_eval.add_argument("--metadata", default="")
+    p_policy_eval.set_defaults(func=cmd_policy_evaluate)
+
+    p_policy_proposals = policy_sub.add_parser("proposals", help="List action proposals")
+    p_policy_proposals.add_argument("--status", default="")
+    p_policy_proposals.add_argument("--limit", type=int, default=50)
+    p_policy_proposals.set_defaults(func=cmd_policy_proposals)
+
+    p_policy_decide = policy_sub.add_parser("decide", help="Approve or reject an action proposal")
+    p_policy_decide.add_argument("proposal_id")
+    p_policy_decide.add_argument("--decision", required=True, choices=["approve", "reject"])
+    p_policy_decide.add_argument("--reason", default="")
+    p_policy_decide.set_defaults(func=cmd_policy_decide)
+
+    p_policy_events = policy_sub.add_parser("events", help="List policy events")
+    p_policy_events.add_argument("--limit", type=int, default=50)
+    p_policy_events.set_defaults(func=cmd_policy_events)
 
     p_retain = sub.add_parser("retain", help="Retain a memory item")
     p_retain.add_argument("content")

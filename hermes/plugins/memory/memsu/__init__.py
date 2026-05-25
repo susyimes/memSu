@@ -149,6 +149,34 @@ REJECT_CANDIDATE_SCHEMA = {
     },
 }
 
+POLICY_CHECK_SCHEMA = {
+    "name": "memsu_policy_check",
+    "description": "Evaluate a proposed proactive action against memSu L0-L4 policy.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "action_type": {"type": "string", "description": "Action type, such as suggestion, file_edit, send_message, or credential_capture."},
+            "description": {"type": "string", "description": "Short action description."},
+            "sensitivity": {"type": "string", "description": "normal, private, secret, or credential.", "default": "normal"},
+            "metadata": {"type": "object", "description": "Optional structured metadata."},
+        },
+        "required": ["action_type"],
+    },
+}
+
+POLICY_PROPOSALS_SCHEMA = {
+    "name": "memsu_policy_proposals",
+    "description": "List memSu action proposals, especially pending confirmations.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "status": {"type": "string", "description": "Optional status filter."},
+            "limit": {"type": "integer", "description": "Maximum results.", "default": 50},
+        },
+        "required": [],
+    },
+}
+
 
 class MemSuMemoryProvider(MemoryProvider):
     def __init__(self):
@@ -176,6 +204,7 @@ class MemSuMemoryProvider(MemoryProvider):
             "# memSu Memory\n"
             "Active. Use memsu_recall for scoped local memory, memsu_retain for durable facts, "
             "memsu_audit for review, memsu_candidates to review extracted candidates, "
+            "memsu_policy_check before proactive actions, "
             "and memsu_forget only when the user asks to remove memory. "
             "Do not use memSu tools for high-risk external actions."
         )
@@ -286,6 +315,8 @@ class MemSuMemoryProvider(MemoryProvider):
             CANDIDATES_SCHEMA,
             ACCEPT_CANDIDATE_SCHEMA,
             REJECT_CANDIDATE_SCHEMA,
+            POLICY_CHECK_SCHEMA,
+            POLICY_PROPOSALS_SCHEMA,
         ]
 
     def handle_tool_call(self, tool_name: str, args: Dict[str, Any], **kwargs) -> str:
@@ -383,6 +414,27 @@ class MemSuMemoryProvider(MemoryProvider):
                 ),
                 ensure_ascii=False,
             )
+        if tool_name == "memsu_policy_check":
+            return json.dumps(
+                self._post(
+                    "/policy/evaluate",
+                    {
+                        "action_type": args.get("action_type", ""),
+                        "description": args.get("description", ""),
+                        "sensitivity": args.get("sensitivity", "normal"),
+                        "metadata": args.get("metadata") or {},
+                    },
+                ),
+                ensure_ascii=False,
+            )
+        if tool_name == "memsu_policy_proposals":
+            query = urllib.parse.urlencode(
+                {
+                    "status": args.get("status", ""),
+                    "limit": args.get("limit", 50),
+                }
+            )
+            return json.dumps(self._get(f"/policy/proposals?{query}"), ensure_ascii=False)
         return json.dumps({"ok": False, "error": f"unknown tool: {tool_name}"})
 
     def _default_scope(self) -> str:

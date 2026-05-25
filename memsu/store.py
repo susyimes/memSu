@@ -7,7 +7,7 @@ import sqlite3
 import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -39,10 +39,15 @@ MEMORY_TYPES = {
 
 ACTIVE_STATUS = "active"
 PENDING_CANDIDATE_STATUS = "pending"
+SUGGESTION_COOLDOWN_SECONDS = 300
 
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def utc_ago(seconds: int) -> str:
+    return (datetime.now(timezone.utc) - timedelta(seconds=seconds)).isoformat(timespec="seconds")
 
 
 def stable_hash(*parts: str) -> str:
@@ -191,6 +196,39 @@ class MemSuStore:
                     ON memory_candidates(candidate_hash);
                 CREATE INDEX IF NOT EXISTS idx_candidates_status
                     ON memory_candidates(status, updated_at);
+
+                CREATE TABLE IF NOT EXISTS action_proposals (
+                    proposal_id TEXT PRIMARY KEY,
+                    action_type TEXT NOT NULL,
+                    description TEXT NOT NULL DEFAULT '',
+                    risk_level TEXT NOT NULL,
+                    decision TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    requires_confirmation INTEGER NOT NULL DEFAULT 0,
+                    sensitivity TEXT NOT NULL DEFAULT 'normal',
+                    reason TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    metadata TEXT NOT NULL DEFAULT '{}'
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_action_proposals_status
+                    ON action_proposals(status, updated_at);
+
+                CREATE TABLE IF NOT EXISTS policy_events (
+                    policy_event_id TEXT PRIMARY KEY,
+                    proposal_id TEXT NOT NULL DEFAULT '',
+                    event_type TEXT NOT NULL,
+                    action_type TEXT NOT NULL,
+                    risk_level TEXT NOT NULL,
+                    decision TEXT NOT NULL,
+                    reason TEXT NOT NULL DEFAULT '',
+                    timestamp TEXT NOT NULL,
+                    metadata TEXT NOT NULL DEFAULT '{}'
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_policy_events_timestamp
+                    ON policy_events(timestamp);
                 """
             )
 
@@ -530,6 +568,177 @@ class MemSuStore:
             )
         return {"candidate_id": candidate_id, "status": "rejected"}
 
+    def evaluate_policy(
+        self,
+        *,
+        action_type: str,
+        description: str = "",
+        sensitivity: str = "normal",
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        from .policy import evaluate_action
+
+        self.init()
+        decision = evaluate_action(
+            action_type,
+            description=description,
+            sensitivity=sensitivity,
+            metadata=metadata,
+        )
+        now = utc_now()
+        proposal_id = f"act_{uuid.uuid4().hex}"
+        with self.session() as conn:
+            risk_level = decision.risk_level
+            proposal_decision = decision.decision
+            status = decision.status
+            reason = decision.reason
+            requires_confirmation = decision.requires_confirmation
+            if decision.risk_level == "L2":
+                if (metadata or {}).get("quiet_hours_active") is True:
+                    proposal_decision = "defer"
+                    status = "deferred"
+                    reason = "Quiet hours are active; suggestion is deferred."
+                elif self._has_recent_policy_proposal(
+                    conn,
+                    action_type=decision.action_type,
+                    since=utc_ago(SUGGESTION_COOLDOWN_SECONDS),
+                ):
+                    proposal_decision = "defer"
+                    status = "deferred"
+                    reason = "Rate limit: similar suggestion was recently recorded."
+
+            conn.execute(
+                """
+                INSERT INTO action_proposals (
+                    proposal_id, action_type, description, risk_level, decision,
+                    status, requires_confirmation, sensitivity, reason, created_at,
+                    updated_at, metadata
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    proposal_id,
+                    decision.action_type,
+                    description,
+                    risk_level,
+                    proposal_decision,
+                    status,
+                    1 if requires_confirmation else 0,
+                    sensitivity,
+                    reason,
+                    now,
+                    now,
+                    json_dumps(metadata),
+                ),
+            )
+            self._insert_policy_event(
+                conn,
+                proposal_id=proposal_id,
+                event_type="evaluated",
+                action_type=decision.action_type,
+                risk_level=risk_level,
+                decision=proposal_decision,
+                reason=reason,
+                metadata=metadata,
+            )
+        proposal = self.get_action_proposal(proposal_id)
+        if proposal is None:
+            raise RuntimeError("failed to read action proposal after insert")
+        return proposal
+
+    def list_action_proposals(
+        self,
+        *,
+        status: str = "",
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        self.init()
+        with self.session() as conn:
+            if status:
+                rows = conn.execute(
+                    """
+                    SELECT * FROM action_proposals
+                    WHERE status = ?
+                    ORDER BY updated_at DESC
+                    LIMIT ?
+                    """,
+                    (status, limit),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT * FROM action_proposals
+                    ORDER BY updated_at DESC
+                    LIMIT ?
+                    """,
+                    (limit,),
+                ).fetchall()
+        return [self._proposal_row_to_dict(row) for row in rows]
+
+    def get_action_proposal(self, proposal_id: str) -> dict[str, Any] | None:
+        self.init()
+        with self.session() as conn:
+            row = conn.execute(
+                "SELECT * FROM action_proposals WHERE proposal_id = ?",
+                (proposal_id,),
+            ).fetchone()
+        return self._proposal_row_to_dict(row) if row else None
+
+    def decide_action_proposal(
+        self,
+        proposal_id: str,
+        *,
+        decision: str,
+        reason: str = "",
+    ) -> dict[str, Any]:
+        normalized = decision.strip().lower()
+        if normalized not in {"approve", "reject"}:
+            raise ValueError("decision must be approve or reject")
+
+        current = self.get_action_proposal(proposal_id)
+        if not current:
+            return {"proposal_id": proposal_id, "status": "not_found"}
+        if current["status"] != "pending_confirmation":
+            return {"proposal_id": proposal_id, "status": current["status"]}
+
+        new_status = "approved" if normalized == "approve" else "rejected"
+        now = utc_now()
+        with self.session() as conn:
+            conn.execute(
+                """
+                UPDATE action_proposals
+                SET status = ?, decision = ?, reason = ?, updated_at = ?
+                WHERE proposal_id = ?
+                """,
+                (new_status, normalized, reason or current["reason"], now, proposal_id),
+            )
+            self._insert_policy_event(
+                conn,
+                proposal_id=proposal_id,
+                event_type=new_status,
+                action_type=current["action_type"],
+                risk_level=current["risk_level"],
+                decision=normalized,
+                reason=reason,
+                metadata=current["metadata"],
+            )
+        return self.get_action_proposal(proposal_id) or {
+            "proposal_id": proposal_id,
+            "status": new_status,
+        }
+
+    def list_policy_events(self, *, limit: int = 50) -> list[dict[str, Any]]:
+        self.init()
+        with self.session() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM policy_events
+                ORDER BY timestamp DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [self._policy_event_row_to_dict(row) for row in rows]
+
     def retain_memory(
         self,
         content: str,
@@ -685,12 +894,17 @@ class MemSuStore:
                 "SELECT COUNT(*) FROM memory_candidates WHERE status = ?",
                 (PENDING_CANDIDATE_STATUS,),
             ).fetchone()[0]
+            pending_action_count = conn.execute(
+                "SELECT COUNT(*) FROM action_proposals WHERE status = ?",
+                ("pending_confirmation",),
+            ).fetchone()[0]
         return {
             "ok": True,
             "db_path": str(self.db_path),
             "event_count": event_count,
             "active_memory_count": memory_count,
             "pending_candidate_count": pending_candidate_count,
+            "pending_action_count": pending_action_count,
         }
 
     def _event_row_to_dict(self, row: sqlite3.Row) -> dict[str, Any]:
@@ -790,3 +1004,82 @@ class MemSuStore:
                 conflicts.append(row["item_id"])
 
         return conflicts
+
+    def _insert_policy_event(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        proposal_id: str,
+        event_type: str,
+        action_type: str,
+        risk_level: str,
+        decision: str,
+        reason: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        conn.execute(
+            """
+            INSERT INTO policy_events (
+                policy_event_id, proposal_id, event_type, action_type,
+                risk_level, decision, reason, timestamp, metadata
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                f"pol_{uuid.uuid4().hex}",
+                proposal_id,
+                event_type,
+                action_type,
+                risk_level,
+                decision,
+                reason,
+                utc_now(),
+                json_dumps(metadata),
+            ),
+        )
+
+    def _has_recent_policy_proposal(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        action_type: str,
+        since: str,
+    ) -> bool:
+        row = conn.execute(
+            """
+            SELECT 1
+            FROM action_proposals
+            WHERE action_type = ? AND created_at >= ?
+            LIMIT 1
+            """,
+            (action_type, since),
+        ).fetchone()
+        return row is not None
+
+    def _proposal_row_to_dict(self, row: sqlite3.Row) -> dict[str, Any]:
+        return {
+            "proposal_id": row["proposal_id"],
+            "action_type": row["action_type"],
+            "description": row["description"],
+            "risk_level": row["risk_level"],
+            "decision": row["decision"],
+            "status": row["status"],
+            "requires_confirmation": bool(row["requires_confirmation"]),
+            "sensitivity": row["sensitivity"],
+            "reason": row["reason"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+            "metadata": json_loads(row["metadata"], {}),
+        }
+
+    def _policy_event_row_to_dict(self, row: sqlite3.Row) -> dict[str, Any]:
+        return {
+            "policy_event_id": row["policy_event_id"],
+            "proposal_id": row["proposal_id"],
+            "event_type": row["event_type"],
+            "action_type": row["action_type"],
+            "risk_level": row["risk_level"],
+            "decision": row["decision"],
+            "reason": row["reason"],
+            "timestamp": row["timestamp"],
+            "metadata": json_loads(row["metadata"], {}),
+        }

@@ -53,6 +53,7 @@ class MemSuStoreTests(unittest.TestCase):
         self.assertEqual([], self.store.recall("SQLite memory", scope="project:memsu"))
         archived = self.store.audit(scope="project:memsu", status="archived")
         self.assertEqual(retained["item_id"], archived[0]["item_id"])
+        self.assertIn("pending_action_count", self.store.health())
 
     def test_extract_accept_and_reject_candidates(self) -> None:
         event = self.store.append_event(

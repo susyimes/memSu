@@ -34,3 +34,6 @@ Forbidden or restricted:
 When unsure, downgrade the behavior to a suggestion and ask for confirmation
 before taking external action.
 
+Use `memsu_policy_check` before proactive behavior that might affect files,
+messages, tasks, configuration, cross-agent context, permissions, or sensitive
+information. Use `memsu_policy_proposals` to review pending confirmations.

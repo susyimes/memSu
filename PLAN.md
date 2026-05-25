@@ -11,6 +11,7 @@ Implemented:
 - candidate accept and reject flow
 - possible conflict hints for similar same-scope memories
 - explicit shell, git, Codex transcript, and workflow adapters
+- L0-L4 proactive policy engine with action proposals and policy event log
 - CLI for init, doctor, event append/list, extract, candidate review, retain, recall, audit, and forget
 - local HTTP service
 - Hermes memory provider skeleton
@@ -21,7 +22,7 @@ Not yet implemented:
 
 - LLM-based memory extraction
 - richer Codex and other agent adapters
-- proactive policy engine beyond documented rules and default policy file
+- richer proactive policy configuration
 - curator jobs
 - vector retrieval
 - production service supervision
@@ -174,11 +175,11 @@ Goal: allow useful proactive behavior without unsafe autonomy.
 
 Deliverables:
 
-- policy configuration
-- risk levels L0 to L4
-- rate limits and quiet hours
-- confirmation-required action proposals
-- policy event log
+- policy configuration (default policy file implemented)
+- risk levels L0 to L4 (implemented)
+- rate limits and quiet hours (basic L2 defer behavior implemented)
+- confirmation-required action proposals (implemented)
+- policy event log (implemented)
 
 Default behavior:
 
