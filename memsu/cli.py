@@ -105,6 +105,41 @@ def cmd_event_list(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_extract(args: argparse.Namespace) -> int:
+    result = MemSuStore(args.db).extract_candidates(
+        event_id=args.event_id,
+        limit=args.limit,
+        auto_accept=args.auto_accept,
+    )
+    print_json(result)
+    return 0
+
+
+def cmd_candidate_list(args: argparse.Namespace) -> int:
+    result = MemSuStore(args.db).list_candidates(
+        status=args.status,
+        scope=args.scope,
+        limit=args.limit,
+    )
+    print_json({"candidates": result})
+    return 0
+
+
+def cmd_candidate_accept(args: argparse.Namespace) -> int:
+    result = MemSuStore(args.db).accept_candidate(args.candidate_id)
+    print_json(result)
+    return 0
+
+
+def cmd_candidate_reject(args: argparse.Namespace) -> int:
+    result = MemSuStore(args.db).reject_candidate(
+        args.candidate_id,
+        reason=args.reason,
+    )
+    print_json(result)
+    return 0
+
+
 def cmd_retain(args: argparse.Namespace) -> int:
     metadata = json.loads(args.metadata) if args.metadata else {}
     result = MemSuStore(args.db).retain_memory(
@@ -184,6 +219,30 @@ def build_parser() -> argparse.ArgumentParser:
     p_event_list.add_argument("--limit", type=int, default=20)
     p_event_list.set_defaults(func=cmd_event_list)
 
+    p_extract = sub.add_parser("extract", help="Extract pending memory candidates from events")
+    p_extract.add_argument("--event-id", default="")
+    p_extract.add_argument("--limit", type=int, default=50)
+    p_extract.add_argument("--auto-accept", action="store_true")
+    p_extract.set_defaults(func=cmd_extract)
+
+    p_candidate = sub.add_parser("candidate", help="Memory candidate operations")
+    candidate_sub = p_candidate.add_subparsers(dest="candidate_command", required=True)
+
+    p_candidate_list = candidate_sub.add_parser("list", help="List memory candidates")
+    p_candidate_list.add_argument("--status", default="pending")
+    p_candidate_list.add_argument("--scope", default="")
+    p_candidate_list.add_argument("--limit", type=int, default=50)
+    p_candidate_list.set_defaults(func=cmd_candidate_list)
+
+    p_candidate_accept = candidate_sub.add_parser("accept", help="Accept a memory candidate")
+    p_candidate_accept.add_argument("candidate_id")
+    p_candidate_accept.set_defaults(func=cmd_candidate_accept)
+
+    p_candidate_reject = candidate_sub.add_parser("reject", help="Reject a memory candidate")
+    p_candidate_reject.add_argument("candidate_id")
+    p_candidate_reject.add_argument("--reason", default="")
+    p_candidate_reject.set_defaults(func=cmd_candidate_reject)
+
     p_retain = sub.add_parser("retain", help="Retain a memory item")
     p_retain.add_argument("content")
     p_retain.add_argument("--type", choices=sorted(MEMORY_TYPES), default="note")
@@ -222,4 +281,3 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as exc:
         print(f"memsu: {exc}", file=sys.stderr)
         return 1
-

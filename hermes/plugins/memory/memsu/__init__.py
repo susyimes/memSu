@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import Any, Dict, List
 
@@ -96,6 +97,58 @@ REFLECT_SCHEMA = {
     },
 }
 
+EXTRACT_SCHEMA = {
+    "name": "memsu_extract",
+    "description": "Extract pending memory candidates from recent memSu events without auto-accepting them.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "event_id": {"type": "string", "description": "Optional event id."},
+            "limit": {"type": "integer", "description": "Maximum events to inspect.", "default": 50},
+        },
+        "required": [],
+    },
+}
+
+CANDIDATES_SCHEMA = {
+    "name": "memsu_candidates",
+    "description": "List pending, accepted, or rejected memSu memory candidates.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "status": {"type": "string", "description": "Candidate status.", "default": "pending"},
+            "scope": {"type": "string", "description": "Optional scope filter."},
+            "limit": {"type": "integer", "description": "Maximum results.", "default": 50},
+        },
+        "required": [],
+    },
+}
+
+ACCEPT_CANDIDATE_SCHEMA = {
+    "name": "memsu_accept_candidate",
+    "description": "Accept a pending memSu memory candidate and promote it to long-term memory.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "candidate_id": {"type": "string", "description": "Candidate id."},
+        },
+        "required": ["candidate_id"],
+    },
+}
+
+REJECT_CANDIDATE_SCHEMA = {
+    "name": "memsu_reject_candidate",
+    "description": "Reject a pending memSu memory candidate with an optional reason.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "candidate_id": {"type": "string", "description": "Candidate id."},
+            "reason": {"type": "string", "description": "Reason for rejecting the candidate."},
+        },
+        "required": ["candidate_id"],
+    },
+}
+
 
 class MemSuMemoryProvider(MemoryProvider):
     def __init__(self):
@@ -122,7 +175,8 @@ class MemSuMemoryProvider(MemoryProvider):
         return (
             "# memSu Memory\n"
             "Active. Use memsu_recall for scoped local memory, memsu_retain for durable facts, "
-            "memsu_audit for review, and memsu_forget only when the user asks to remove memory. "
+            "memsu_audit for review, memsu_candidates to review extracted candidates, "
+            "and memsu_forget only when the user asks to remove memory. "
             "Do not use memSu tools for high-risk external actions."
         )
 
@@ -149,7 +203,7 @@ class MemSuMemoryProvider(MemoryProvider):
         if self._agent_context != "primary":
             return
         content = f"User: {user_content[:4000]}\nAssistant: {assistant_content[:4000]}"
-        self._post(
+        result = self._post(
             "/events",
             {
                 "source_agent": "hermes",
@@ -159,10 +213,16 @@ class MemSuMemoryProvider(MemoryProvider):
                 "content": content,
                 "workspace": self._workspace,
                 "thread_id": session_id or self._session_id,
-                "metadata": {"agent_identity": self._agent_identity},
+                "metadata": {
+                    "agent_identity": self._agent_identity,
+                    "scope": self._default_scope(),
+                },
             },
             timeout=3,
         )
+        event_id = result.get("event_id") if isinstance(result, dict) else ""
+        if event_id:
+            self._post("/extract", {"event_id": event_id, "auto_accept": False}, timeout=3)
 
     def on_memory_write(self, action, target, content, metadata=None) -> None:
         if action not in {"add", "replace"} or not content:
@@ -216,7 +276,17 @@ class MemSuMemoryProvider(MemoryProvider):
         return ""
 
     def get_tool_schemas(self) -> List[Dict[str, Any]]:
-        return [RECALL_SCHEMA, RETAIN_SCHEMA, AUDIT_SCHEMA, FORGET_SCHEMA, REFLECT_SCHEMA]
+        return [
+            RECALL_SCHEMA,
+            RETAIN_SCHEMA,
+            AUDIT_SCHEMA,
+            FORGET_SCHEMA,
+            REFLECT_SCHEMA,
+            EXTRACT_SCHEMA,
+            CANDIDATES_SCHEMA,
+            ACCEPT_CANDIDATE_SCHEMA,
+            REJECT_CANDIDATE_SCHEMA,
+        ]
 
     def handle_tool_call(self, tool_name: str, args: Dict[str, Any], **kwargs) -> str:
         args = args or {}
@@ -273,6 +343,46 @@ class MemSuMemoryProvider(MemoryProvider):
                 ),
                 ensure_ascii=False,
             )
+        if tool_name == "memsu_extract":
+            return json.dumps(
+                self._post(
+                    "/extract",
+                    {
+                        "event_id": args.get("event_id", ""),
+                        "limit": args.get("limit", 50),
+                        "auto_accept": False,
+                    },
+                ),
+                ensure_ascii=False,
+            )
+        if tool_name == "memsu_candidates":
+            query = urllib.parse.urlencode(
+                {
+                    "status": args.get("status", "pending"),
+                    "scope": args.get("scope", ""),
+                    "limit": args.get("limit", 50),
+                }
+            )
+            return json.dumps(self._get(f"/candidates?{query}"), ensure_ascii=False)
+        if tool_name == "memsu_accept_candidate":
+            return json.dumps(
+                self._post(
+                    "/candidates/accept",
+                    {"candidate_id": args.get("candidate_id", "")},
+                ),
+                ensure_ascii=False,
+            )
+        if tool_name == "memsu_reject_candidate":
+            return json.dumps(
+                self._post(
+                    "/candidates/reject",
+                    {
+                        "candidate_id": args.get("candidate_id", ""),
+                        "reason": args.get("reason", ""),
+                    },
+                ),
+                ensure_ascii=False,
+            )
         return json.dumps({"ok": False, "error": f"unknown tool: {tool_name}"})
 
     def _default_scope(self) -> str:
@@ -306,4 +416,3 @@ class MemSuMemoryProvider(MemoryProvider):
 
 def register(ctx):
     ctx.register_memory_provider(MemSuMemoryProvider())
-

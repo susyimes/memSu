@@ -230,6 +230,15 @@ python -m memsu retain "memSu uses SQLite for the first MVP" --type decision --s
 python -m memsu recall "SQLite MVP" --scope project:memsu
 ```
 
+Extract pending candidates from events:
+
+```powershell
+python -m memsu event append --source-agent codex --event-type conversation_turn --content "Decision: memSu reviews extracted candidates before accepting them." --repo susyimes/memSu
+python -m memsu extract
+python -m memsu candidate list --scope project:memSu
+python -m memsu candidate accept <candidate_id>
+```
+
 Install into Hermes:
 
 ```powershell
@@ -263,7 +272,10 @@ Implemented:
 
 - SQLite event log
 - scoped memory items
-- CLI commands for init, doctor, event append/list, retain, recall, audit, and forget
+- rule-based candidate extraction from events
+- candidate accept and reject flow
+- possible conflict hints for similar same-scope memories
+- CLI commands for init, doctor, event append/list, extract, candidate review, retain, recall, audit, and forget
 - local HTTP service for Hermes integration
 - Hermes external memory provider skeleton
 - Hermes memory skills
@@ -278,6 +290,6 @@ The current implementation proves the first core loop:
 4. Serve recall back to Hermes through a memory provider.
 5. Provide audit and forget operations.
 
-Extraction is still manual or tool-driven in the MVP. LLM-based candidate
+Candidate extraction is rule-based and review-first in the MVP. LLM-based
 extraction, curator jobs, richer policy enforcement, and multi-agent adapters
 belong to later phases.

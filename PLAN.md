@@ -7,7 +7,10 @@ Implemented:
 - repository foundation
 - SQLite-backed event log
 - basic memory item store
-- CLI for init, doctor, event append/list, retain, recall, audit, and forget
+- rule-based candidate extraction pipeline
+- candidate accept and reject flow
+- possible conflict hints for similar same-scope memories
+- CLI for init, doctor, event append/list, extract, candidate review, retain, recall, audit, and forget
 - local HTTP service
 - Hermes memory provider skeleton
 - Hermes skills and bootstrap prompt
@@ -15,7 +18,7 @@ Implemented:
 
 Not yet implemented:
 
-- automatic LLM memory extraction
+- LLM-based memory extraction
 - Codex and other agent adapters
 - proactive policy engine beyond documented rules and default policy file
 - curator jobs
@@ -129,10 +132,10 @@ Goal: convert observations into durable memory candidates.
 Deliverables:
 
 - memory item schema
-- candidate extraction pipeline
-- confidence, salience, scope, and source tracking
-- explicit rejection and correction flow
-- conflict detection for incompatible facts
+- candidate extraction pipeline (rule-based MVP implemented)
+- confidence, salience, scope, and source tracking (implemented)
+- explicit rejection and correction flow (candidate accept/reject implemented)
+- conflict detection for incompatible facts (basic same-scope similarity hints implemented)
 
 Memory types:
 

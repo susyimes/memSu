@@ -38,6 +38,7 @@ MEMORY_TYPES = {
 }
 
 ACTIVE_STATUS = "active"
+PENDING_CANDIDATE_STATUS = "pending"
 
 
 def utc_now() -> str:
@@ -168,6 +169,28 @@ class MemSuStore:
                     ON memories(scope, status);
                 CREATE INDEX IF NOT EXISTS idx_memories_type
                     ON memories(type, status);
+
+                CREATE TABLE IF NOT EXISTS memory_candidates (
+                    candidate_id TEXT PRIMARY KEY,
+                    content TEXT NOT NULL,
+                    type TEXT NOT NULL,
+                    scope TEXT NOT NULL,
+                    confidence REAL NOT NULL DEFAULT 0.7,
+                    salience REAL NOT NULL DEFAULT 0.5,
+                    source_event_ids TEXT NOT NULL DEFAULT '[]',
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    candidate_hash TEXT NOT NULL,
+                    accepted_item_id TEXT NOT NULL DEFAULT '',
+                    reason TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    metadata TEXT NOT NULL DEFAULT '{}'
+                );
+
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_candidates_hash
+                    ON memory_candidates(candidate_hash);
+                CREATE INDEX IF NOT EXISTS idx_candidates_status
+                    ON memory_candidates(status, updated_at);
                 """
             )
 
@@ -260,14 +283,252 @@ class MemSuStore:
                 """
                 SELECT event_id, source_agent, source_type, actor, event_type,
                        workspace, repo, cwd, thread_id, task_id, content,
-                       sensitivity, timestamp, metadata
+                       content_ref, artifact_refs, sensitivity, timestamp, metadata
                 FROM events
                 ORDER BY timestamp DESC
                 LIMIT ?
                 """,
                 (limit,),
             ).fetchall()
-        return [dict(row) for row in rows]
+        return [self._event_row_to_dict(row) for row in rows]
+
+    def get_event(self, event_id: str) -> dict[str, Any] | None:
+        self.init()
+        with self.session() as conn:
+            row = conn.execute(
+                """
+                SELECT event_id, source_agent, source_type, actor, event_type,
+                       workspace, repo, cwd, thread_id, task_id, content,
+                       content_ref, artifact_refs, sensitivity, timestamp, metadata
+                FROM events
+                WHERE event_id = ?
+                """,
+                (event_id,),
+            ).fetchone()
+        return self._event_row_to_dict(row) if row else None
+
+    def extract_candidates(
+        self,
+        *,
+        event_id: str = "",
+        limit: int = 50,
+        auto_accept: bool = False,
+    ) -> dict[str, Any]:
+        from .extractor import extract_candidates_from_event
+
+        self.init()
+        if event_id:
+            event = self.get_event(event_id)
+            events = [event] if event else []
+        else:
+            events = self.list_events(limit=limit)
+
+        created: list[dict[str, Any]] = []
+        accepted: list[dict[str, Any]] = []
+        skipped = 0
+        for event in events:
+            if not event:
+                continue
+            drafts = extract_candidates_from_event(event)
+            if not drafts:
+                skipped += 1
+                continue
+            for draft in drafts:
+                candidate = self.propose_candidate(
+                    draft.content,
+                    type=draft.type,
+                    scope=draft.scope,
+                    confidence=draft.confidence,
+                    salience=draft.salience,
+                    source_event_ids=[event["event_id"]],
+                    metadata={
+                        **draft.metadata,
+                        "source_agent": event.get("source_agent", ""),
+                        "source_type": event.get("source_type", ""),
+                    },
+                )
+                if candidate.get("duplicate"):
+                    continue
+                created.append(candidate)
+                if auto_accept:
+                    accepted.append(self.accept_candidate(candidate["candidate_id"]))
+
+        return {
+            "created_count": len(created),
+            "accepted_count": len(accepted),
+            "skipped_event_count": skipped,
+            "candidates": created,
+            "accepted": accepted,
+        }
+
+    def propose_candidate(
+        self,
+        content: str,
+        *,
+        type: str,
+        scope: str,
+        confidence: float = 0.7,
+        salience: float = 0.5,
+        source_event_ids: Iterable[str] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        self.init()
+        if not content.strip():
+            raise ValueError("candidate content cannot be empty")
+        if type not in MEMORY_TYPES:
+            raise ValueError(f"unsupported memory type: {type}")
+
+        source_ids = list(source_event_ids or [])
+        candidate_hash = stable_hash(content.strip().lower(), type, scope, json_dumps(source_ids))
+        candidate_id = f"cand_{uuid.uuid4().hex}"
+        now = utc_now()
+        with self.session() as conn:
+            candidate_metadata = dict(metadata or {})
+            conflicts = self._find_possible_conflicts(
+                conn, content=content.strip(), type=type, scope=scope
+            )
+            if conflicts:
+                candidate_metadata["possible_conflict_item_ids"] = conflicts
+            try:
+                conn.execute(
+                    """
+                    INSERT INTO memory_candidates (
+                        candidate_id, content, type, scope, confidence, salience,
+                        source_event_ids, status, candidate_hash, created_at,
+                        updated_at, metadata
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        candidate_id,
+                        content.strip(),
+                        type,
+                        scope,
+                        float(confidence),
+                        float(salience),
+                        json_dumps(source_ids),
+                        PENDING_CANDIDATE_STATUS,
+                        candidate_hash,
+                        now,
+                        now,
+                        json_dumps(candidate_metadata),
+                    ),
+                )
+                duplicate = False
+            except sqlite3.IntegrityError:
+                row = conn.execute(
+                    "SELECT * FROM memory_candidates WHERE candidate_hash = ?",
+                    (candidate_hash,),
+                ).fetchone()
+                duplicate = True
+                candidate_id = row["candidate_id"]
+
+        candidate = self.get_candidate(candidate_id)
+        if candidate is None:
+            raise RuntimeError("failed to read candidate after insert")
+        candidate["duplicate"] = duplicate
+        return candidate
+
+    def list_candidates(
+        self,
+        *,
+        status: str = PENDING_CANDIDATE_STATUS,
+        scope: str = "",
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        self.init()
+        with self.session() as conn:
+            if scope:
+                rows = conn.execute(
+                    """
+                    SELECT * FROM memory_candidates
+                    WHERE status = ? AND scope = ?
+                    ORDER BY updated_at DESC
+                    LIMIT ?
+                    """,
+                    (status, scope, limit),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT * FROM memory_candidates
+                    WHERE status = ?
+                    ORDER BY updated_at DESC
+                    LIMIT ?
+                    """,
+                    (status, limit),
+                ).fetchall()
+        return [self._candidate_row_to_dict(row) for row in rows]
+
+    def get_candidate(self, candidate_id: str) -> dict[str, Any] | None:
+        self.init()
+        with self.session() as conn:
+            row = conn.execute(
+                "SELECT * FROM memory_candidates WHERE candidate_id = ?",
+                (candidate_id,),
+            ).fetchone()
+        return self._candidate_row_to_dict(row) if row else None
+
+    def accept_candidate(self, candidate_id: str) -> dict[str, Any]:
+        candidate = self.get_candidate(candidate_id)
+        if not candidate:
+            return {"candidate_id": candidate_id, "status": "not_found"}
+        if candidate["status"] == "accepted":
+            return {
+                "candidate_id": candidate_id,
+                "status": "accepted",
+                "item_id": candidate.get("accepted_item_id", ""),
+            }
+        if candidate["status"] != PENDING_CANDIDATE_STATUS:
+            return {"candidate_id": candidate_id, "status": candidate["status"]}
+
+        retained = self.retain_memory(
+            candidate["content"],
+            type=candidate["type"],
+            scope=candidate["scope"],
+            confidence=float(candidate["confidence"]),
+            salience=float(candidate["salience"]),
+            source_event_ids=candidate["source_event_ids"],
+            metadata={
+                **candidate["metadata"],
+                "candidate_id": candidate_id,
+                "accepted_from_candidate": True,
+            },
+        )
+        now = utc_now()
+        with self.session() as conn:
+            conn.execute(
+                """
+                UPDATE memory_candidates
+                SET status = 'accepted', accepted_item_id = ?, updated_at = ?
+                WHERE candidate_id = ?
+                """,
+                (retained["item_id"], now, candidate_id),
+            )
+        return {
+            "candidate_id": candidate_id,
+            "status": "accepted",
+            "item_id": retained["item_id"],
+        }
+
+    def reject_candidate(self, candidate_id: str, *, reason: str = "") -> dict[str, Any]:
+        self.init()
+        now = utc_now()
+        with self.session() as conn:
+            row = conn.execute(
+                "SELECT status FROM memory_candidates WHERE candidate_id = ?",
+                (candidate_id,),
+            ).fetchone()
+            if not row:
+                return {"candidate_id": candidate_id, "status": "not_found"}
+            conn.execute(
+                """
+                UPDATE memory_candidates
+                SET status = 'rejected', reason = ?, updated_at = ?
+                WHERE candidate_id = ?
+                """,
+                (reason, now, candidate_id),
+            )
+        return {"candidate_id": candidate_id, "status": "rejected"}
 
     def retain_memory(
         self,
@@ -420,11 +681,36 @@ class MemSuStore:
             memory_count = conn.execute(
                 "SELECT COUNT(*) FROM memories WHERE status = ?", (ACTIVE_STATUS,)
             ).fetchone()[0]
+            pending_candidate_count = conn.execute(
+                "SELECT COUNT(*) FROM memory_candidates WHERE status = ?",
+                (PENDING_CANDIDATE_STATUS,),
+            ).fetchone()[0]
         return {
             "ok": True,
             "db_path": str(self.db_path),
             "event_count": event_count,
             "active_memory_count": memory_count,
+            "pending_candidate_count": pending_candidate_count,
+        }
+
+    def _event_row_to_dict(self, row: sqlite3.Row) -> dict[str, Any]:
+        return {
+            "event_id": row["event_id"],
+            "source_agent": row["source_agent"],
+            "source_type": row["source_type"],
+            "actor": row["actor"],
+            "event_type": row["event_type"],
+            "workspace": row["workspace"],
+            "repo": row["repo"],
+            "cwd": row["cwd"],
+            "thread_id": row["thread_id"],
+            "task_id": row["task_id"],
+            "content": row["content"],
+            "content_ref": row["content_ref"],
+            "artifact_refs": json_loads(row["artifact_refs"], []),
+            "sensitivity": row["sensitivity"],
+            "timestamp": row["timestamp"],
+            "metadata": json_loads(row["metadata"], {}),
         }
 
     def _memory_row_to_dict(
@@ -447,3 +733,60 @@ class MemSuStore:
         if score is not None:
             result["score"] = score
         return result
+
+    def _candidate_row_to_dict(self, row: sqlite3.Row) -> dict[str, Any]:
+        return {
+            "candidate_id": row["candidate_id"],
+            "content": row["content"],
+            "type": row["type"],
+            "scope": row["scope"],
+            "confidence": row["confidence"],
+            "salience": row["salience"],
+            "source_event_ids": json_loads(row["source_event_ids"], []),
+            "status": row["status"],
+            "candidate_hash": row["candidate_hash"],
+            "accepted_item_id": row["accepted_item_id"],
+            "reason": row["reason"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+            "metadata": json_loads(row["metadata"], {}),
+        }
+
+    def _find_possible_conflicts(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        content: str,
+        type: str,
+        scope: str,
+    ) -> list[str]:
+        candidate_terms = tokenize(content)
+        if len(candidate_terms) < 3:
+            return []
+
+        rows = conn.execute(
+            """
+            SELECT item_id, content
+            FROM memories
+            WHERE status = ? AND type = ? AND scope = ?
+            ORDER BY updated_at DESC
+            LIMIT 50
+            """,
+            (ACTIVE_STATUS, type, scope),
+        ).fetchall()
+
+        conflicts: list[str] = []
+        normalized_content = content.strip().lower()
+        for row in rows:
+            existing_content = row["content"].strip().lower()
+            if existing_content == normalized_content:
+                continue
+            existing_terms = tokenize(existing_content)
+            if not existing_terms:
+                continue
+            overlap = len(candidate_terms & existing_terms)
+            denominator = max(1, min(len(candidate_terms), len(existing_terms)))
+            if overlap >= 3 and overlap / denominator >= 0.5:
+                conflicts.append(row["item_id"])
+
+        return conflicts

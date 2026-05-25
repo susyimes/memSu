@@ -46,6 +46,15 @@ class MemSuHandler(BaseHTTPRequestHandler):
             )
             write_json(self, 200, {"memories": result})
             return
+        if parsed.path == "/candidates":
+            params = parse_qs(parsed.query)
+            result = self.store.list_candidates(
+                status=params.get("status", ["pending"])[0],
+                scope=params.get("scope", [""])[0],
+                limit=int(params.get("limit", ["50"])[0]),
+            )
+            write_json(self, 200, {"candidates": result})
+            return
         write_json(self, 404, {"ok": False, "error": "not found"})
 
     def do_POST(self) -> None:
@@ -75,6 +84,24 @@ class MemSuHandler(BaseHTTPRequestHandler):
                 )
                 write_json(self, 200, result)
                 return
+            if self.path == "/extract":
+                result = self.store.extract_candidates(
+                    event_id=body.get("event_id", ""),
+                    limit=int(body.get("limit", 50)),
+                    auto_accept=bool(body.get("auto_accept", False)),
+                )
+                write_json(self, 200, result)
+                return
+            if self.path == "/candidates/accept":
+                result = self.store.accept_candidate(body.get("candidate_id", ""))
+                write_json(self, 200, result)
+                return
+            if self.path == "/candidates/reject":
+                result = self.store.reject_candidate(
+                    body.get("candidate_id", ""), reason=body.get("reason", "")
+                )
+                write_json(self, 200, result)
+                return
             write_json(self, 404, {"ok": False, "error": "not found"})
         except Exception as exc:
             write_json(self, 400, {"ok": False, "error": str(exc)})
@@ -85,4 +112,3 @@ def run_server(host: str = "127.0.0.1", port: int = 8765) -> None:
     server = ThreadingHTTPServer((host, port), MemSuHandler)
     print(f"memSu service listening on http://{host}:{port}", flush=True)
     server.serve_forever()
-
