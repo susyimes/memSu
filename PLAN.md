@@ -10,6 +10,7 @@ Implemented:
 - rule-based candidate extraction pipeline
 - candidate accept and reject flow
 - possible conflict hints for similar same-scope memories
+- explicit shell, git, Codex transcript, and workflow adapters
 - CLI for init, doctor, event append/list, extract, candidate review, retain, recall, audit, and forget
 - local HTTP service
 - Hermes memory provider skeleton
@@ -19,7 +20,7 @@ Implemented:
 Not yet implemented:
 
 - LLM-based memory extraction
-- Codex and other agent adapters
+- richer Codex and other agent adapters
 - proactive policy engine beyond documented rules and default policy file
 - curator jobs
 - vector retrieval
@@ -157,11 +158,11 @@ Goal: observe local agents and workflows beyond Hermes.
 
 Deliverables:
 
-- Codex adapter
-- shell/git adapter
-- generic workflow log adapter
-- adapter documentation
-- minimal local API: `/events`, `/recall`, `/audit`, `/forget`
+- Codex adapter (transcript ingestion implemented)
+- shell/git adapter (implemented)
+- generic workflow log adapter (implemented)
+- adapter documentation (implemented)
+- minimal local API: `/events`, `/recall`, `/audit`, `/forget` plus adapter endpoints
 
 Success check:
 

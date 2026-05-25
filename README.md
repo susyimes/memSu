@@ -24,6 +24,9 @@ memSu should be able to observe and support:
 - git commits, diffs, branches, and project decisions
 - generated artifacts, logs, and task outcomes
 
+Observation is explicit in the MVP: adapters record structured events from
+local tools and workflows without hidden monitoring.
+
 ## Architecture
 
 ```text
@@ -239,6 +242,16 @@ python -m memsu candidate list --scope project:memSu
 python -m memsu candidate accept <candidate_id>
 ```
 
+Record local agent and workflow observations:
+
+```powershell
+python -m memsu adapter git --repo-path . --workspace memSu
+python -m memsu adapter shell --command "python -m unittest discover -s tests" --exit-code 0 --workspace memSu --repo susyimes/memSu
+python -m memsu adapter workflow --name tests --status passed --summary "unit tests passed" --workspace memSu --repo susyimes/memSu
+```
+
+See [docs/adapters.md](docs/adapters.md) for adapter details.
+
 Install into Hermes:
 
 ```powershell
@@ -275,6 +288,7 @@ Implemented:
 - rule-based candidate extraction from events
 - candidate accept and reject flow
 - possible conflict hints for similar same-scope memories
+- explicit shell, git, Codex transcript, and workflow adapters
 - CLI commands for init, doctor, event append/list, extract, candidate review, retain, recall, audit, and forget
 - local HTTP service for Hermes integration
 - Hermes external memory provider skeleton

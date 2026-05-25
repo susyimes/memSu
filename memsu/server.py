@@ -4,6 +4,12 @@ import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+from .adapters import (
+    ingest_codex_transcript,
+    record_shell_command,
+    record_workflow_result,
+    snapshot_git_repo,
+)
 from .store import MemSuStore
 
 
@@ -62,6 +68,22 @@ class MemSuHandler(BaseHTTPRequestHandler):
             body = read_json(self)
             if self.path == "/events":
                 result = self.store.append_event(**body)
+                write_json(self, 200, result)
+                return
+            if self.path == "/adapters/shell":
+                result = record_shell_command(self.store, **body)
+                write_json(self, 200, result)
+                return
+            if self.path == "/adapters/git":
+                result = snapshot_git_repo(self.store, **body)
+                write_json(self, 200, result)
+                return
+            if self.path == "/adapters/codex":
+                result = ingest_codex_transcript(self.store, **body)
+                write_json(self, 200, result)
+                return
+            if self.path == "/adapters/workflow":
+                result = record_workflow_result(self.store, **body)
                 write_json(self, 200, result)
                 return
             if self.path == "/retain":

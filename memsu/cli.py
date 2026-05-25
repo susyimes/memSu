@@ -5,6 +5,12 @@ import json
 import sys
 from typing import Any
 
+from .adapters import (
+    ingest_codex_transcript,
+    record_shell_command,
+    record_workflow_result,
+    snapshot_git_repo,
+)
 from .paths import default_db_path, default_policy_path, memsu_home
 from .server import run_server
 from .store import EVENT_TYPES, MEMORY_TYPES, MemSuStore
@@ -102,6 +108,66 @@ def cmd_event_append(args: argparse.Namespace) -> int:
 
 def cmd_event_list(args: argparse.Namespace) -> int:
     print_json({"events": MemSuStore(args.db).list_events(limit=args.limit)})
+    return 0
+
+
+def cmd_adapter_shell(args: argparse.Namespace) -> int:
+    result = record_shell_command(
+        MemSuStore(args.db),
+        command=args.command,
+        cwd=args.cwd,
+        exit_code=args.exit_code,
+        stdout=args.stdout,
+        stderr=args.stderr,
+        duration_ms=args.duration_ms,
+        workspace=args.workspace,
+        repo=args.repo,
+        task_id=args.task_id,
+        sensitivity=args.sensitivity,
+    )
+    print_json(result)
+    return 0
+
+
+def cmd_adapter_git(args: argparse.Namespace) -> int:
+    result = snapshot_git_repo(
+        MemSuStore(args.db),
+        repo_path=args.repo_path,
+        workspace=args.workspace,
+        sensitivity=args.sensitivity,
+    )
+    print_json(result)
+    return 0
+
+
+def cmd_adapter_codex(args: argparse.Namespace) -> int:
+    result = ingest_codex_transcript(
+        MemSuStore(args.db),
+        path=args.path,
+        workspace=args.workspace,
+        repo=args.repo,
+        thread_id=args.thread_id,
+        sensitivity=args.sensitivity,
+    )
+    print_json(result)
+    return 0
+
+
+def cmd_adapter_workflow(args: argparse.Namespace) -> int:
+    artifact_refs = json.loads(args.artifact_refs) if args.artifact_refs else []
+    result = record_workflow_result(
+        MemSuStore(args.db),
+        name=args.name,
+        status=args.status,
+        summary=args.summary,
+        workspace=args.workspace,
+        repo=args.repo,
+        cwd=args.cwd,
+        task_id=args.task_id,
+        artifact_refs=artifact_refs,
+        sensitivity=args.sensitivity,
+    )
+    print_json(result)
     return 0
 
 
@@ -218,6 +284,48 @@ def build_parser() -> argparse.ArgumentParser:
     p_event_list = event_sub.add_parser("list", help="List recent events")
     p_event_list.add_argument("--limit", type=int, default=20)
     p_event_list.set_defaults(func=cmd_event_list)
+
+    p_adapter = sub.add_parser("adapter", help="Record structured observations from local tools")
+    adapter_sub = p_adapter.add_subparsers(dest="adapter_command", required=True)
+
+    p_adapter_shell = adapter_sub.add_parser("shell", help="Record a shell command result")
+    p_adapter_shell.add_argument("--command", required=True)
+    p_adapter_shell.add_argument("--cwd", default="")
+    p_adapter_shell.add_argument("--exit-code", type=int, default=0)
+    p_adapter_shell.add_argument("--stdout", default="")
+    p_adapter_shell.add_argument("--stderr", default="")
+    p_adapter_shell.add_argument("--duration-ms", type=int, default=None)
+    p_adapter_shell.add_argument("--workspace", default="")
+    p_adapter_shell.add_argument("--repo", default="")
+    p_adapter_shell.add_argument("--task-id", default="")
+    p_adapter_shell.add_argument("--sensitivity", default="normal")
+    p_adapter_shell.set_defaults(func=cmd_adapter_shell)
+
+    p_adapter_git = adapter_sub.add_parser("git", help="Record a git repository snapshot")
+    p_adapter_git.add_argument("--repo-path", default=".")
+    p_adapter_git.add_argument("--workspace", default="")
+    p_adapter_git.add_argument("--sensitivity", default="normal")
+    p_adapter_git.set_defaults(func=cmd_adapter_git)
+
+    p_adapter_codex = adapter_sub.add_parser("codex", help="Ingest a Codex transcript file")
+    p_adapter_codex.add_argument("path")
+    p_adapter_codex.add_argument("--workspace", default="")
+    p_adapter_codex.add_argument("--repo", default="")
+    p_adapter_codex.add_argument("--thread-id", default="")
+    p_adapter_codex.add_argument("--sensitivity", default="normal")
+    p_adapter_codex.set_defaults(func=cmd_adapter_codex)
+
+    p_adapter_workflow = adapter_sub.add_parser("workflow", help="Record a workflow result")
+    p_adapter_workflow.add_argument("--name", required=True)
+    p_adapter_workflow.add_argument("--status", required=True)
+    p_adapter_workflow.add_argument("--summary", required=True)
+    p_adapter_workflow.add_argument("--workspace", default="")
+    p_adapter_workflow.add_argument("--repo", default="")
+    p_adapter_workflow.add_argument("--cwd", default="")
+    p_adapter_workflow.add_argument("--task-id", default="")
+    p_adapter_workflow.add_argument("--artifact-refs", default="")
+    p_adapter_workflow.add_argument("--sensitivity", default="normal")
+    p_adapter_workflow.set_defaults(func=cmd_adapter_workflow)
 
     p_extract = sub.add_parser("extract", help="Extract pending memory candidates from events")
     p_extract.add_argument("--event-id", default="")
