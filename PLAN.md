@@ -11,6 +11,8 @@ Deliverables:
 - initial package layout
 - local development instructions
 - basic configuration format
+- Hermes bootstrap prompt design
+- script-based installation contract
 
 Success check:
 
@@ -57,6 +59,46 @@ Deliverables:
 Success check:
 
 - Hermes can recall memSu memory before a turn and sync conversation events after a turn
+
+## Phase 2.5: Hermes Bootstrap Installer
+
+Goal: let Hermes initialize memSu safely through a prompt-orchestrated,
+script-backed workflow.
+
+Deliverables:
+
+- `scripts/install_hermes.ps1`
+- `scripts/doctor.ps1`
+- `scripts/start_service.ps1`
+- `hermes/prompts/bootstrap-hermes-memsu.md`
+- installer support for resolving `HERMES_HOME`
+- config backup before mutation
+- provider and skill copy/install logic
+- local data directory and SQLite initialization
+- default policy file with high-risk actions disabled
+- synthetic event and recall smoke test
+
+Bootstrap principle:
+
+- the prompt orchestrates
+- scripts mutate the filesystem
+- doctor verifies the result
+
+The bootstrap prompt should tell Hermes to:
+
+1. inspect installer scripts before executing them
+2. resolve the memSu repo path and Hermes home
+3. run the installer
+4. verify provider and skill installation
+5. ensure Hermes config uses `memory.provider = memsu`
+6. start or verify the local memSu service
+7. run doctor
+8. report exact installed paths, config changes, service status, and test results
+
+Success check:
+
+- a Hermes agent can bootstrap memSu from a cloned repository without manually copying files
+- the installer is repeatable and does not enable autonomous external actions by default
 
 ## Phase 3: Memory Extraction
 
@@ -171,4 +213,3 @@ The smallest useful build is:
 
 Do not start with full autonomy, screen observation, or multi-agent policy
 complexity. Build the trustworthy memory loop first.
-

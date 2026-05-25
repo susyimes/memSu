@@ -106,6 +106,72 @@ The provider should implement:
 - `on_pre_compress` for compression-aware memory extraction
 - memory tools for recall, retain, audit, patch, forget, and reflect
 
+### Hermes Bootstrap
+
+Hermes should not be expected to assemble memSu from prompt instructions alone.
+The reliable bootstrap model is:
+
+```text
+Hermes bootstrap prompt
+        |
+        v
+deterministic installer scripts
+        |
+        v
+Hermes memory provider + skills + config
+        |
+        v
+doctor verification
+```
+
+The prompt is responsible for orchestration. Scripts are responsible for file
+operations, configuration updates, service startup, and validation.
+
+The planned repository layout is:
+
+```text
+scripts/
+  install_hermes.ps1
+  doctor.ps1
+  start_service.ps1
+hermes/
+  plugins/memory/memsu/
+  skills/memory-capture/
+  skills/memory-audit/
+  skills/proactive-policy/
+  prompts/bootstrap-hermes-memsu.md
+```
+
+The bootstrap prompt should instruct Hermes to:
+
+1. locate the memSu repository
+2. inspect the installer and doctor scripts before running them
+3. resolve `HERMES_HOME`, defaulting to `~/.hermes`
+4. install the memory provider and skills through scripts
+5. configure Hermes to use `memory.provider = memsu`
+6. start or verify the local memSu service
+7. run a doctor check and synthetic recall test
+8. report installed paths, config changes, service status, and remaining user actions
+
+The installer should:
+
+- copy the Hermes memory provider into the Hermes plugin directory
+- copy memSu skills into the Hermes skills directory
+- initialize the local memSu data directory and SQLite database
+- write the default policy file
+- patch Hermes config only after backing it up
+- keep proactive external actions disabled by default
+
+The doctor script should verify:
+
+- Python/runtime availability
+- local service import and startup
+- database read/write access
+- Hermes plugin and skill installation
+- Hermes config points to `memsu`
+- provider import smoke test
+- event append and recall smoke test
+
 ### Memory Supervisor Agent
 
 A dedicated Hermes agent acts as the memory supervisor.
@@ -143,6 +209,7 @@ require explicit confirmation.
 - Unscoped memory shared across all agents
 - Autonomous high-risk external actions
 - A prompt-only memory system with no durable event model
+- Prompt-only installation without deterministic scripts and verification
 
 ## Current Status
 
@@ -155,4 +222,3 @@ The first implementation should prove the core loop:
 3. Extract scoped memory.
 4. Serve recall back to Hermes through a memory provider.
 5. Provide audit and forget operations.
-
