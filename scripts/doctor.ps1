@@ -17,6 +17,14 @@ try {
     if ($LASTEXITCODE -ne 0) {
         throw "memSu doctor failed"
     }
+    python -m memsu status
+    if ($LASTEXITCODE -ne 0) {
+        throw "memSu status failed"
+    }
+    python -m memsu observe doctor
+    if ($LASTEXITCODE -ne 0) {
+        throw "memSu observe doctor failed"
+    }
     python -m memsu migrate status
     if ($LASTEXITCODE -ne 0) {
         throw "memSu migration status failed"
@@ -26,11 +34,9 @@ try {
         throw "memSu privacy scan failed"
     }
 
-    $pluginPath = Join-Path $HermesHome "plugins\memsu\__init__.py"
     $skillPath = Join-Path $HermesHome "skills\memory-capture\SKILL.md"
 
     Write-Output "Hermes home: $HermesHome"
-    Write-Output "Provider installed: $(Test-Path -LiteralPath $pluginPath)"
     Write-Output "Skills installed: $(Test-Path -LiteralPath $skillPath)"
 }
 finally {

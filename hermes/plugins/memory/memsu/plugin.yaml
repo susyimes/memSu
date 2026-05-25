@@ -1,7 +1,0 @@
-name: memsu
-version: 0.1.0
-description: "memSu local memory supervisor for Hermes and desktop agents."
-hooks:
-  - on_pre_compress
-  - on_delegation
-

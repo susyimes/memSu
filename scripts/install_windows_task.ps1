@@ -1,32 +1,25 @@
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
     [string]$RepoRoot = (Split-Path -Parent $PSScriptRoot),
-    [string]$TaskName = "memSu Service",
-    [string]$HostAddress = "127.0.0.1",
-    [int]$Port = 8765
+    [string]$TaskName = "memSu Observe",
+    [string]$DailyAt = "09:00"
 )
 
 $ErrorActionPreference = "Stop"
 
 $RepoRoot = (Resolve-Path -LiteralPath $RepoRoot).Path
-$startScript = Join-Path $RepoRoot "scripts\start_service.ps1"
-if (-not (Test-Path -LiteralPath $startScript)) {
-    throw "start_service.ps1 not found at $startScript"
+$packageRoot = Join-Path $RepoRoot "memsu"
+if (-not (Test-Path -LiteralPath $packageRoot)) {
+    throw "memSu package not found under $RepoRoot"
 }
 
 $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
-$arguments = @(
-    "-NoProfile",
-    "-ExecutionPolicy", "Bypass",
-    "-File", "`"$startScript`"",
-    "-RepoRoot", "`"$RepoRoot`"",
-    "-HostAddress", "`"$HostAddress`"",
-    "-Port", [string]$Port
-) -join " "
+$arguments = "-m memsu observe run"
+$triggerTime = [datetime]::Today.Add([TimeSpan]::Parse($DailyAt))
 
-if ($PSCmdlet.ShouldProcess($TaskName, "install memSu Windows Scheduled Task")) {
-    $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument $arguments
-    $trigger = New-ScheduledTaskTrigger -AtLogOn
+if ($PSCmdlet.ShouldProcess($TaskName, "install memSu observe Scheduled Task")) {
+    $action = New-ScheduledTaskAction -Execute "python" -Argument $arguments -WorkingDirectory $RepoRoot
+    $trigger = New-ScheduledTaskTrigger -Daily -At $triggerTime
     $settings = New-ScheduledTaskSettingsSet `
         -AllowStartIfOnBatteries `
         -DontStopIfGoingOnBatteries `
@@ -35,7 +28,7 @@ if ($PSCmdlet.ShouldProcess($TaskName, "install memSu Windows Scheduled Task")) 
     $principal = New-ScheduledTaskPrincipal `
         -UserId $identity `
         -LogonType Interactive `
-        -RunLevel LeastPrivilege
+        -RunLevel Limited
 
     Register-ScheduledTask `
         -TaskName $TaskName `
@@ -47,4 +40,6 @@ if ($PSCmdlet.ShouldProcess($TaskName, "install memSu Windows Scheduled Task")) 
 
     Write-Output "Installed Windows Scheduled Task '$TaskName' for $identity"
 }
-Write-Output "Task action: powershell.exe $arguments"
+Write-Output "Task action: python $arguments"
+Write-Output "Working directory: $RepoRoot"
+Write-Output "Daily schedule: $DailyAt"

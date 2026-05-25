@@ -51,8 +51,8 @@ python -m memsu curator conflicts
 python -m memsu curator runs
 ```
 
-A resident HTTP API is deferred until there is a measured need for a long-running
-process.
+There is no resident HTTP curator API in V2. Add one back only after measuring a
+real need for a long-running process.
 
 ## Hermes Tools
 

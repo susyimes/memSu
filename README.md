@@ -144,6 +144,8 @@ The planned repository layout is:
 scripts/
   install_hermes.ps1
   doctor.ps1
+  install_windows_task.ps1
+  uninstall_windows_task.ps1
 hermes/
   skills/memory-capture/
   skills/memory-audit/
@@ -220,6 +222,7 @@ Run a smoke test:
 
 ```powershell
 python -m memsu doctor
+python -m memsu status
 ```
 
 Add and recall memory:
@@ -257,6 +260,16 @@ python -m memsu adapter workflow --name tests --status passed --summary "unit te
 ```
 
 See [docs/adapters.md](docs/adapters.md) for adapter details.
+
+Run a local observe snapshot:
+
+```powershell
+python -m memsu observe run
+python -m memsu observe list
+```
+
+Observe writes to `${MEMSU_HOME:-~/.memsu}/observe/YYYY-MM-DD.md` and records a
+snapshot row in SQLite. See [docs/observe.md](docs/observe.md).
 
 Evaluate proactive policy:
 
@@ -317,6 +330,8 @@ Implemented:
 
 - SQLite event log
 - scoped memory items
+- CLI-first status and discovery manifests
+- observe snapshots written to `${MEMSU_HOME:-~/.memsu}/observe/YYYY-MM-DD.md`
 - rule-based and optional OpenAI-compatible LLM candidate extraction from events
 - candidate accept and reject flow
 - possible conflict hints for similar same-scope memories
@@ -324,8 +339,7 @@ Implemented:
 - L0-L4 proactive policy engine with action proposals, configurable rate limits, quiet-hour deferral, and policy event log
 - curator jobs for dedupe, stale detection, summaries, and conflict review queue
 - production hardening tools for migration status, backup, export, privacy review, and sparse vector recall
-- CLI commands for init, doctor, event append/list, extract, candidate review, retain, recall, audit, and forget
-- optional local HTTP service/provider compatibility code from the V1 experiment
+- CLI commands for init, status, doctor, observe, event append/list, extract, candidate review, retain, recall, audit, and forget
 - Hermes memory skills
 - bootstrap prompt
 - PowerShell installer and doctor scripts
@@ -342,4 +356,5 @@ Current limitations: observation is explicit adapter ingestion rather than hidde
 monitoring; LLM extraction is optional, skips sensitive events, and still
 creates review-first candidates; the policy parser supports a small local
 defaults file instead of a full policy language; the HTTP service/provider path
-is deferred until CLI latency, concurrency, or integration needs justify it.
+has been removed from the default project and should only be reintroduced if
+CLI latency, concurrency, or integration needs justify it.

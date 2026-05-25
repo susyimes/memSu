@@ -76,8 +76,8 @@ python -m memsu policy decide <proposal_id> --decision approve
 python -m memsu policy events
 ```
 
-A resident HTTP API is deferred until CLI latency, concurrency, or host
-integration requires it.
+There is no resident HTTP policy API in V2. Add one back only if CLI latency,
+concurrency, or host integration requires it.
 
 ## Hermes Tools
 

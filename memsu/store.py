@@ -24,6 +24,7 @@ EVENT_TYPES = {
     "memory_write",
     "delegation_result",
     "session_summary",
+    "observation_snapshot",
 }
 
 MEMORY_TYPES = {
@@ -39,7 +40,7 @@ MEMORY_TYPES = {
 
 ACTIVE_STATUS = "active"
 PENDING_CANDIDATE_STATUS = "pending"
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 
 def utc_now() -> str:
@@ -73,6 +74,30 @@ def json_loads(value: str | None, default: Any) -> Any:
 
 def tokenize(text: str) -> set[str]:
     return {t for t in re.findall(r"[A-Za-z0-9_]+", text.lower()) if len(t) > 1}
+
+
+def observation_event_content(
+    *,
+    current_picture: list[str],
+    known: list[str],
+    inferred: list[str],
+    unknown: list[str],
+    agent_usage: dict[str, str],
+    support_opportunity: str,
+) -> str:
+    sections = [
+        ("Current picture", current_picture),
+        ("Known", known),
+        ("Inferred", inferred),
+        ("Unknown", unknown),
+        ("Agent usage by source", [f"{name}: {value}" for name, value in agent_usage.items()]),
+        ("Support opportunity", [support_opportunity or "None"]),
+    ]
+    lines: list[str] = []
+    for title, items in sections:
+        lines.append(f"{title}:")
+        lines.extend(f"- {item}" for item in items[:8])
+    return "\n".join(lines)
 
 
 @dataclass(frozen=True)
@@ -280,6 +305,26 @@ class MemSuStore:
 
                 CREATE INDEX IF NOT EXISTS idx_vector_index_scope
                     ON vector_index(scope);
+
+                CREATE TABLE IF NOT EXISTS observation_snapshots (
+                    snapshot_id TEXT PRIMARY KEY,
+                    local_date TEXT NOT NULL,
+                    local_time TEXT NOT NULL,
+                    timezone TEXT NOT NULL,
+                    current_picture_json TEXT NOT NULL DEFAULT '[]',
+                    known_json TEXT NOT NULL DEFAULT '[]',
+                    inferred_json TEXT NOT NULL DEFAULT '[]',
+                    unknown_json TEXT NOT NULL DEFAULT '[]',
+                    agent_usage_json TEXT NOT NULL DEFAULT '{}',
+                    support_opportunity TEXT NOT NULL DEFAULT 'None',
+                    sources_json TEXT NOT NULL DEFAULT '{}',
+                    observe_path TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    metadata TEXT NOT NULL DEFAULT '{}'
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_observation_snapshots_date
+                    ON observation_snapshots(local_date, local_time);
 
                 CREATE TABLE IF NOT EXISTS schema_migrations (
                     version INTEGER PRIMARY KEY,
@@ -894,6 +939,115 @@ class MemSuStore:
             ).fetchall()
         return [self._curator_run_row_to_dict(row) for row in rows]
 
+    def record_observation_snapshot(
+        self,
+        *,
+        local_date: str,
+        local_time: str,
+        timezone_name: str,
+        current_picture: list[str],
+        known: list[str],
+        inferred: list[str],
+        unknown: list[str],
+        agent_usage: dict[str, str],
+        support_opportunity: str,
+        sources: dict[str, Any],
+        observe_path: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        self.init()
+        snapshot_id = f"obs_{uuid.uuid4().hex}"
+        now = utc_now()
+        with self.session() as conn:
+            conn.execute(
+                """
+                INSERT INTO observation_snapshots (
+                    snapshot_id, local_date, local_time, timezone,
+                    current_picture_json, known_json, inferred_json, unknown_json,
+                    agent_usage_json, support_opportunity, sources_json,
+                    observe_path, created_at, metadata
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    snapshot_id,
+                    local_date,
+                    local_time,
+                    timezone_name,
+                    json_dumps(current_picture),
+                    json_dumps(known),
+                    json_dumps(inferred),
+                    json_dumps(unknown),
+                    json_dumps(agent_usage),
+                    support_opportunity or "None",
+                    json_dumps(sources),
+                    observe_path,
+                    now,
+                    json_dumps(metadata),
+                ),
+            )
+
+        event = self.append_event(
+            source_agent="memsu",
+            source_type="observe",
+            actor="system",
+            event_type="observation_snapshot",
+            content=observation_event_content(
+                current_picture=current_picture,
+                known=known,
+                inferred=inferred,
+                unknown=unknown,
+                agent_usage=agent_usage,
+                support_opportunity=support_opportunity,
+            ),
+            content_ref=observe_path,
+            metadata={"snapshot_id": snapshot_id, **(metadata or {})},
+        )
+        snapshot = self.get_observation_snapshot(snapshot_id)
+        if snapshot is None:
+            raise RuntimeError("failed to read observation snapshot after insert")
+        snapshot["event"] = event
+        return snapshot
+
+    def list_observation_snapshots(
+        self,
+        *,
+        local_date: str = "",
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        self.init()
+        with self.session() as conn:
+            if local_date:
+                rows = conn.execute(
+                    """
+                    SELECT *
+                    FROM observation_snapshots
+                    WHERE local_date = ?
+                    ORDER BY local_date DESC, local_time DESC
+                    LIMIT ?
+                    """,
+                    (local_date, limit),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT *
+                    FROM observation_snapshots
+                    ORDER BY local_date DESC, local_time DESC
+                    LIMIT ?
+                    """,
+                    (limit,),
+                ).fetchall()
+        return [self._observation_snapshot_row_to_dict(row) for row in rows]
+
+    def get_observation_snapshot(self, snapshot_id: str) -> dict[str, Any] | None:
+        self.init()
+        with self.session() as conn:
+            row = conn.execute(
+                "SELECT * FROM observation_snapshots WHERE snapshot_id = ?",
+                (snapshot_id,),
+            ).fetchone()
+        return self._observation_snapshot_row_to_dict(row) if row else None
+
     def migration_status(self) -> dict[str, Any]:
         self.init()
         with self.session() as conn:
@@ -1104,6 +1258,9 @@ class MemSuStore:
                 ("open",),
             ).fetchone()[0]
             vector_count = conn.execute("SELECT COUNT(*) FROM vector_index").fetchone()[0]
+            observation_count = conn.execute(
+                "SELECT COUNT(*) FROM observation_snapshots"
+            ).fetchone()[0]
         return {
             "ok": True,
             "db_path": str(self.db_path),
@@ -1114,6 +1271,7 @@ class MemSuStore:
             "pending_action_count": pending_action_count,
             "open_conflict_count": open_conflict_count,
             "vector_index_count": vector_count,
+            "observation_snapshot_count": observation_count,
         }
 
     def _event_row_to_dict(self, row: sqlite3.Row) -> dict[str, Any]:
@@ -1325,5 +1483,23 @@ class MemSuStore:
             "started_at": row["started_at"],
             "finished_at": row["finished_at"],
             "result": json_loads(row["result"], {}),
+            "metadata": json_loads(row["metadata"], {}),
+        }
+
+    def _observation_snapshot_row_to_dict(self, row: sqlite3.Row) -> dict[str, Any]:
+        return {
+            "snapshot_id": row["snapshot_id"],
+            "local_date": row["local_date"],
+            "local_time": row["local_time"],
+            "timezone": row["timezone"],
+            "current_picture": json_loads(row["current_picture_json"], []),
+            "known": json_loads(row["known_json"], []),
+            "inferred": json_loads(row["inferred_json"], []),
+            "unknown": json_loads(row["unknown_json"], []),
+            "agent_usage": json_loads(row["agent_usage_json"], {}),
+            "support_opportunity": row["support_opportunity"],
+            "sources": json_loads(row["sources_json"], {}),
+            "observe_path": row["observe_path"],
+            "created_at": row["created_at"],
             "metadata": json_loads(row["metadata"], {}),
         }

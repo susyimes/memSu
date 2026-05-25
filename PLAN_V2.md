@@ -236,14 +236,14 @@ the durable query and audit substrate.
 
 ### V2.0 Observe Foundation
 
-- add `observe/` path helpers
-- add machine-independent install and capabilities manifest templates
-- add observe markdown writer
-- add `observation_snapshots` table and migrations
-- add `python -m memsu observe run`
-- add `python -m memsu status`
-- implement empty-source safe snapshot generation
-- document `docs/observe.md`
+- add `observe/` path helpers (implemented)
+- add machine-independent install and capabilities manifest templates (implemented)
+- add observe markdown writer (implemented)
+- add `observation_snapshots` table and migrations (implemented)
+- add `python -m memsu observe run` (implemented)
+- add `python -m memsu status` (implemented)
+- implement empty-source safe snapshot generation (implemented)
+- document `docs/observe.md` (implemented)
 
 Success check:
 
@@ -254,11 +254,11 @@ Success check:
 
 ### V2.1 Source Readers
 
-- implement Codex high-level reader
-- implement OpenClaw high-level reader
-- implement Claude/Gemini presence and recent-file readers
-- implement Hermes status reader
-- enforce denylist and redaction policy
+- implement Codex high-level reader (initial metadata reader implemented)
+- implement OpenClaw high-level reader (initial metadata reader implemented)
+- implement Claude/Gemini presence and recent-file readers (initial readers implemented)
+- implement Hermes status reader (initial local status reader implemented)
+- enforce denylist and redaction policy (implemented for sensitive-looking paths)
 
 Success check:
 
@@ -269,7 +269,7 @@ Success check:
 
 - add Hermes cron prompt/template for observe
 - add install/doctor checks for observe schedule readiness
-- add Windows Scheduled Task compatibility notes for CLI observe jobs
+- add Windows Scheduled Task compatibility notes for CLI observe jobs (initial script implemented)
 - add failure reporting guidance
 
 Success check:
@@ -289,9 +289,8 @@ Success check:
 
 ## Open Questions
 
-- Should observe snapshots use a new event type or stay as `workflow_result` for
-  V2.0 compatibility?
-- How often should Hermes cron run by default: hourly, every few hours, or daily?
+- What should the default production schedule be once real usage data exists:
+  hourly, every few hours, or daily?
 - Which scheduler should be documented first: Hermes cron, Codex automation, or
   Windows Task Scheduler?
 - Should support opportunity be generated deterministically first, with LLM

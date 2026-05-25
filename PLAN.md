@@ -9,6 +9,8 @@ Implemented:
 - repository foundation
 - SQLite-backed event log
 - basic memory item store
+- CLI-first status and machine-independent discovery manifests
+- observe snapshot storage and `${MEMSU_HOME:-~/.memsu}/observe/YYYY-MM-DD.md` output
 - rule-based candidate extraction pipeline
 - optional OpenAI-compatible LLM candidate extraction pipeline
 - candidate accept and reject flow
@@ -17,17 +19,16 @@ Implemented:
 - L0-L4 proactive policy engine with action proposals, configurable defaults, and policy event log
 - curator jobs for dedupe, stale detection, summaries, and conflict review queue
 - production hardening tools for migration status, backup, export, privacy review, and sparse vector recall
-- CLI for init, doctor, event append/list, extract, candidate review, retain, recall, audit, and forget
-- optional V1 HTTP/provider compatibility code
+- CLI for init, status, doctor, observe, event append/list, extract, candidate review, retain, recall, audit, and forget
 - Hermes skills and bootstrap prompt
-- PowerShell install and doctor scripts
+- PowerShell install, doctor, and observe scheduled task scripts
 
 Known limitations:
 
 - LLM extraction requires an explicitly configured OpenAI-compatible endpoint, skips sensitive events, and still creates review-first candidates.
 - Agent observation is explicit transcript/workflow ingestion, not hidden desktop surveillance.
 - Policy configuration currently supports simple local defaults, not a full rule DSL.
-- The HTTP service/provider path is deferred until CLI latency, concurrency, or integration needs justify it.
+- The HTTP service/provider path has been removed and should only be reintroduced if CLI latency, concurrency, or integration needs justify it.
 
 ## Phase 0: Repository Foundation
 
@@ -82,7 +83,7 @@ Deliverables:
 - CLI JSON contract for recall, retain, audit, forget, policy, and candidate review
 - Hermes skills that call `python -m memsu ...`
 - explicit event ingestion commands for post-work summaries
-- optional provider/service compatibility only if a later bottleneck requires it
+- future service/provider compatibility only if a later bottleneck requires it
 
 Success check:
 
@@ -98,6 +99,7 @@ Deliverables:
 
 - `scripts/install_hermes.ps1`
 - `scripts/doctor.ps1`
+- `scripts/install_windows_task.ps1` for scheduled observe
 - `hermes/prompts/bootstrap-hermes-memsu.md`
 - installer support for resolving `HERMES_HOME`
 - no Hermes config mutation unless explicitly requested

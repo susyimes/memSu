@@ -1,6 +1,6 @@
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
-    [string]$TaskName = "memSu Service"
+    [string]$TaskName = "memSu Observe"
 )
 
 $ErrorActionPreference = "Stop"

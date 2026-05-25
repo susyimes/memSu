@@ -83,5 +83,6 @@ python -m memsu adapter workflow `
 ## Integration Contract
 
 Adapters are CLI-first. Any trusted local agent can call these commands and
-write to the same local SQLite store. A resident HTTP service is deferred until
-there is a measured need for high-frequency, low-latency access.
+write to the same local SQLite store. There is no resident HTTP adapter API in
+V2; add one back only after a measured need for high-frequency, low-latency
+access appears.

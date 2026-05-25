@@ -5,9 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import os
-
-from memsu.hardening import is_pid_running, privacy_scan, service_status
+from memsu.hardening import privacy_scan
 from memsu.store import MemSuStore
 
 
@@ -65,15 +63,6 @@ class HardeningTests(unittest.TestCase):
 
         self.assertEqual(1, len(recalled))
         self.assertGreater(recalled[0]["vector_score"], 0)
-
-    def test_service_status_handles_missing_pid(self) -> None:
-        result = service_status(pid_file=self.root / "missing.pid")
-
-        self.assertFalse(result["running"])
-        self.assertEqual("pid file missing", result["reason"])
-
-    def test_pid_running_detects_current_process(self) -> None:
-        self.assertTrue(is_pid_running(os.getpid()))
 
 
 if __name__ == "__main__":

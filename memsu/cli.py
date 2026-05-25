@@ -12,9 +12,9 @@ from .adapters import (
     record_workflow_result,
     snapshot_git_repo,
 )
-from .hardening import service_status, service_stop
-from .paths import default_db_path, default_policy_path, memsu_home
-from .server import run_server
+from .discovery import ensure_discovery_files, status_payload
+from .observe import observe_doctor, run_observe
+from .paths import default_db_path, default_observe_dir, default_policy_path, memsu_home
 from .store import EVENT_TYPES, MEMORY_TYPES, MemSuStore
 
 
@@ -50,7 +50,22 @@ def cmd_init(args: argparse.Namespace) -> int:
     store = MemSuStore(args.db)
     store.init()
     ensure_policy_file()
-    print_json({"ok": True, "db_path": str(store.db_path), "home": str(memsu_home())})
+    default_observe_dir().mkdir(parents=True, exist_ok=True)
+    discovery = ensure_discovery_files()
+    print_json(
+        {
+            "ok": True,
+            "db_path": str(store.db_path),
+            "home": str(memsu_home()),
+            "observe_dir": str(default_observe_dir()),
+            "discovery": discovery,
+        }
+    )
+    return 0
+
+
+def cmd_status(args: argparse.Namespace) -> int:
+    print_json(status_payload(MemSuStore(args.db)))
     return 0
 
 
@@ -336,13 +351,35 @@ def cmd_vector_recall(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_service_status(args: argparse.Namespace) -> int:
-    print_json(service_status(pid_file=args.pid_file or None))
+def cmd_observe_run(args: argparse.Namespace) -> int:
+    result = run_observe(
+        MemSuStore(args.db),
+        evidence_home=args.evidence_home or None,
+    )
+    print_json(result)
     return 0
 
 
-def cmd_service_stop(args: argparse.Namespace) -> int:
-    print_json(service_stop(pid_file=args.pid_file or None))
+def cmd_observe_list(args: argparse.Namespace) -> int:
+    result = MemSuStore(args.db).list_observation_snapshots(
+        local_date=args.date,
+        limit=args.limit,
+    )
+    print_json({"snapshots": result})
+    return 0
+
+
+def cmd_observe_show(args: argparse.Namespace) -> int:
+    result = MemSuStore(args.db).get_observation_snapshot(args.snapshot_id)
+    if result is None:
+        print_json({"ok": False, "snapshot_id": args.snapshot_id, "status": "not_found"})
+        return 1
+    print_json(result)
+    return 0
+
+
+def cmd_observe_doctor(args: argparse.Namespace) -> int:
+    print_json(observe_doctor(MemSuStore(args.db)))
     return 0
 
 
@@ -381,11 +418,6 @@ def cmd_forget(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_serve(args: argparse.Namespace) -> int:
-    run_server(host=args.host, port=args.port)
-    return 0
-
-
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="memsu", description="memSu local memory supervisor")
     parser.add_argument("--db", default=None, help="SQLite database path")
@@ -394,13 +426,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_init = sub.add_parser("init", help="Initialize local memSu storage")
     p_init.set_defaults(func=cmd_init)
 
+    p_status = sub.add_parser("status", help="Show CLI-first memSu discovery status")
+    p_status.set_defaults(func=cmd_status)
+
     p_doctor = sub.add_parser("doctor", help="Run a local smoke test")
     p_doctor.set_defaults(func=cmd_doctor)
-
-    p_serve = sub.add_parser("serve", help="Run the local HTTP service")
-    p_serve.add_argument("--host", default="127.0.0.1")
-    p_serve.add_argument("--port", type=int, default=8765)
-    p_serve.set_defaults(func=cmd_serve)
 
     p_event = sub.add_parser("event", help="Event log operations")
     event_sub = p_event.add_subparsers(dest="event_command", required=True)
@@ -582,14 +612,20 @@ def build_parser() -> argparse.ArgumentParser:
     p_vector_recall.add_argument("--limit", type=int, default=5)
     p_vector_recall.set_defaults(func=cmd_vector_recall)
 
-    p_service = sub.add_parser("service", help="Local service supervision helpers")
-    service_sub = p_service.add_subparsers(dest="service_command", required=True)
-    p_service_status = service_sub.add_parser("status", help="Check service PID status")
-    p_service_status.add_argument("--pid-file", default="")
-    p_service_status.set_defaults(func=cmd_service_status)
-    p_service_stop = service_sub.add_parser("stop", help="Stop service from PID file")
-    p_service_stop.add_argument("--pid-file", default="")
-    p_service_stop.set_defaults(func=cmd_service_stop)
+    p_observe = sub.add_parser("observe", help="Run and inspect local observe snapshots")
+    observe_sub = p_observe.add_subparsers(dest="observe_command", required=True)
+    p_observe_run = observe_sub.add_parser("run", help="Append today's high-signal observe snapshot")
+    p_observe_run.add_argument("--evidence-home", default="")
+    p_observe_run.set_defaults(func=cmd_observe_run)
+    p_observe_list = observe_sub.add_parser("list", help="List observation snapshots")
+    p_observe_list.add_argument("--date", default="")
+    p_observe_list.add_argument("--limit", type=int, default=20)
+    p_observe_list.set_defaults(func=cmd_observe_list)
+    p_observe_show = observe_sub.add_parser("show", help="Show one observation snapshot")
+    p_observe_show.add_argument("snapshot_id")
+    p_observe_show.set_defaults(func=cmd_observe_show)
+    p_observe_doctor = observe_sub.add_parser("doctor", help="Check observe readiness")
+    p_observe_doctor.set_defaults(func=cmd_observe_doctor)
 
     p_retain = sub.add_parser("retain", help="Retain a memory item")
     p_retain.add_argument("content")

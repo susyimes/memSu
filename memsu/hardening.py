@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 import sqlite3
-import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +27,7 @@ EXPORT_TABLES = [
     "conflict_reviews",
     "curator_runs",
     "vector_index",
+    "observation_snapshots",
 ]
 
 
@@ -109,64 +108,6 @@ def privacy_scan(store: MemSuStore, *, limit: int = 200) -> dict[str, Any]:
                             }
                         )
     return {"ok": True, "finding_count": len(findings), "findings": findings}
-
-
-def service_status(*, pid_file: str | Path | None = None) -> dict[str, Any]:
-    path = Path(pid_file) if pid_file else memsu_home() / "memsu.pid"
-    if not path.exists():
-        return {"running": False, "pid_file": str(path), "reason": "pid file missing"}
-    raw_pid = path.read_text(encoding="utf-8", errors="replace").strip()
-    try:
-        pid = int(raw_pid)
-    except ValueError:
-        return {"running": False, "pid_file": str(path), "reason": "invalid pid file"}
-    running = is_pid_running(pid)
-    return {"running": running, "pid": pid, "pid_file": str(path)}
-
-
-def service_stop(*, pid_file: str | Path | None = None) -> dict[str, Any]:
-    status = service_status(pid_file=pid_file)
-    if not status.get("running"):
-        return status
-    pid = int(status["pid"])
-    if os.name == "nt":
-        result = subprocess.run(
-            ["taskkill", "/PID", str(pid), "/T", "/F"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        if result.returncode != 0:
-            return {"running": True, "pid": pid, "error": result.stderr.strip() or result.stdout.strip()}
-    else:
-        try:
-            os.kill(pid, 15)
-        except Exception as exc:
-            return {"running": True, "pid": pid, "error": str(exc)}
-    return {"running": False, "pid": pid, "stopped": True}
-
-
-def is_pid_running(pid: int) -> bool:
-    if pid <= 0:
-        return False
-    if os.name == "nt":
-        result = subprocess.run(
-            ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        if result.returncode != 0:
-            return False
-        output = result.stdout.strip()
-        return str(pid) in output and "No tasks" not in output
-    try:
-        os.kill(pid, 0)
-    except OSError:
-        return False
-    except PermissionError:
-        return True
-    return True
 
 
 def redact_preview(content: str, limit: int = 160) -> str:
