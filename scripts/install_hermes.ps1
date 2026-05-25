@@ -15,7 +15,7 @@ function Set-HermesMemoryConfig {
     $backupPath = "$ConfigPath.bak-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
     if (Test-Path -LiteralPath $ConfigPath) {
         Copy-Item -LiteralPath $ConfigPath -Destination $backupPath -Force
-        $lines = @(Get-Content -LiteralPath $ConfigPath)
+        $lines = @(Get-Content -LiteralPath $ConfigPath -Encoding UTF8)
     }
     else {
         New-Item -ItemType Directory -Force -Path (Split-Path -Parent $ConfigPath) | Out-Null
@@ -68,7 +68,8 @@ function Set-HermesMemoryConfig {
         }
     }
 
-    Set-Content -LiteralPath $ConfigPath -Value $lines -Encoding UTF8
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllLines($ConfigPath, [string[]]$lines, $utf8NoBom)
     if (Test-Path -LiteralPath $backupPath) {
         Write-Output "Backed up Hermes config to $backupPath"
     }

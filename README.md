@@ -1,11 +1,17 @@
 # memSu
 
-memSu is a local memory supervisor for Hermes and other desktop agents.
+memSu is a local memory and observation store for Hermes and other desktop
+agents.
 
 The goal is not to clone memU as a library. The goal is to make a dedicated
-Hermes agent act as a long-running memory supervisor that observes local agents,
-workflows, command history, project activity, and task outcomes, then turns
-reliable observations into scoped, auditable long-term memory.
+Hermes agent, Codex automation, Windows scheduled task, or any other local agent
+able to run memSu CLI jobs that observe local agents, workflows, command
+history, project activity, and task outcomes, then turn reliable observations
+into scoped, auditable long-term memory.
+
+memSu does not need to run as a daemon. The default integration model is
+CLI-first: any trusted local agent can execute `python -m memsu ...` and read or
+write the same local SQLite store.
 
 ## Core Idea
 
@@ -39,10 +45,10 @@ Observation adapters
 Append-only event log
         |
         v
-Memory service
+memSu CLI jobs + SQLite store
         |
         v
-Hermes memory-supervisor agent
+Any local agent / scheduler
         |
         v
 Recall / audit / proactive suggestions / policy gates
@@ -80,9 +86,9 @@ Each event should include:
 - sensitivity level
 - source hash
 
-### Memory Service
+### Memory Core
 
-The memory service extracts durable memory from events.
+The memory core extracts durable memory from events.
 
 It stores:
 
@@ -97,17 +103,19 @@ It stores:
 Every memory item must have scope, source references, confidence, status, and
 last-used metadata.
 
-### Hermes Memory Provider
+### Agent Bridge
 
-memSu integrates with Hermes as an external `MemoryProvider`.
+memSu should be usable by Hermes and other local agents through the CLI. The
+CLI is the required integration contract; a long-running HTTP service is not
+part of the default design.
 
-The provider should implement:
+Agent-facing operations should include:
 
-- `prefetch` for scoped recall before a Hermes turn
-- `sync_turn` for post-turn ingestion
-- `on_session_end` for session summaries
-- `on_pre_compress` for compression-aware memory extraction
-- memory tools for recall, retain, audit, patch, forget, and reflect
+- scoped recall before work starts
+- explicit post-work event ingestion
+- observation snapshot generation
+- memory tools for recall, retain, audit, patch, forget, and review
+- policy checks before proactive or external actions
 
 ### Hermes Bootstrap
 
@@ -121,14 +129,14 @@ Hermes bootstrap prompt
 deterministic installer scripts
         |
         v
-Hermes memory provider + skills + config
+Hermes skills + CLI job config
         |
         v
 doctor verification
 ```
 
 The prompt is responsible for orchestration. Scripts are responsible for file
-operations, configuration updates, service startup, and validation.
+operations, configuration updates, CLI verification, and validation.
 
 The planned repository layout is:
 
@@ -136,12 +144,7 @@ The planned repository layout is:
 scripts/
   install_hermes.ps1
   doctor.ps1
-  start_service.ps1
-  status_service.ps1
-  install_windows_task.ps1
-  uninstall_windows_task.ps1
 hermes/
-  plugins/memory/memsu/
   skills/memory-capture/
   skills/memory-audit/
   skills/proactive-policy/
@@ -153,29 +156,25 @@ The bootstrap prompt should instruct Hermes to:
 1. locate the memSu repository
 2. inspect the installer and doctor scripts before running them
 3. resolve `HERMES_HOME`, defaulting to `~/.hermes`
-4. install the memory provider and skills through scripts
-5. configure Hermes to use `memory.provider = memsu`
-6. start or verify the local memSu service
-7. run a doctor check and synthetic recall test
-8. report installed paths, config changes, service status, and remaining user actions
+4. install memSu skills and CLI job helpers through scripts
+5. verify Hermes can execute `python -m memsu ...`
+6. run a doctor check and synthetic recall test
+7. report installed paths, config changes, CLI status, and remaining user actions
 
 The installer should:
 
-- copy the Hermes memory provider into the Hermes plugin directory
 - copy memSu skills into the Hermes skills directory
 - initialize the local memSu data directory and SQLite database
 - write the default policy file
-- patch Hermes config only after backing it up
+- avoid Hermes config mutation unless the user explicitly requests it
 - keep proactive external actions disabled by default
 
 The doctor script should verify:
 
 - Python/runtime availability
-- local service import and startup
 - database read/write access
-- Hermes plugin and skill installation
-- Hermes config points to `memsu`
-- provider import smoke test
+- Hermes skill installation
+- memSu CLI command execution
 - event append and recall smoke test
 
 ### Memory Supervisor Agent
@@ -221,12 +220,6 @@ Run a smoke test:
 
 ```powershell
 python -m memsu doctor
-```
-
-Start the local service:
-
-```powershell
-.\scripts\start_service.ps1
 ```
 
 Add and recall memory:
@@ -293,13 +286,6 @@ python -m memsu backup create
 python -m memsu export json
 python -m memsu privacy scan
 python -m memsu vector rebuild
-python -m memsu service status
-```
-
-Install as a Windows logon task:
-
-```powershell
-.\scripts\install_windows_task.ps1
 ```
 
 See [docs/hardening.md](docs/hardening.md) for hardening details.
@@ -307,17 +293,11 @@ See [docs/hardening.md](docs/hardening.md) for hardening details.
 Install into Hermes:
 
 ```powershell
-.\scripts\install_hermes.ps1 -PatchConfig
+.\scripts\install_hermes.ps1
 .\scripts\doctor.ps1
 ```
 
-Hermes should then use:
-
-```yaml
-memory:
-  enabled: true
-  provider: memsu
-```
+Hermes should then call memSu through CLI jobs and skills.
 
 ## Non-goals
 
@@ -343,24 +323,23 @@ Implemented:
 - explicit shell, git, Codex transcript, generic transcript, and workflow adapters
 - L0-L4 proactive policy engine with action proposals, configurable rate limits, quiet-hour deferral, and policy event log
 - curator jobs for dedupe, stale detection, summaries, and conflict review queue
-- production hardening tools for migration status, backup, export, privacy review, service status, and sparse vector recall
+- production hardening tools for migration status, backup, export, privacy review, and sparse vector recall
 - CLI commands for init, doctor, event append/list, extract, candidate review, retain, recall, audit, and forget
-- local HTTP service for Hermes integration
-- Hermes external memory provider skeleton
+- optional local HTTP service/provider compatibility code from the V1 experiment
 - Hermes memory skills
 - bootstrap prompt
-- PowerShell installer, doctor, service startup/status, and Windows Scheduled Task scripts
+- PowerShell installer and doctor scripts
 
 The current implementation proves the first core loop:
 
 1. Observe Hermes, local coding agents, shell/git activity, and workflows.
 2. Store structured events locally.
 3. Extract scoped memory with review-first candidate approval.
-4. Serve recall back to Hermes through a memory provider.
+4. Return recall to any local agent through CLI-first commands.
 5. Provide audit and forget operations.
 
 Current limitations: observation is explicit adapter ingestion rather than hidden
 monitoring; LLM extraction is optional, skips sensitive events, and still
 creates review-first candidates; the policy parser supports a small local
-defaults file instead of a full policy language; Windows service packaging is a
-user-level Scheduled Task rather than a native service.
+defaults file instead of a full policy language; the HTTP service/provider path
+is deferred until CLI latency, concurrency, or integration needs justify it.

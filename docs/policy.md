@@ -65,12 +65,19 @@ Denied by default:
 python -m memsu policy evaluate --action-type credential_capture --description "capture secrets from terminal output"
 ```
 
-## HTTP API
+## Integration Contract
 
-- `POST /policy/evaluate`
-- `GET /policy/proposals`
-- `POST /policy/decide`
-- `GET /policy/events`
+Policy checks are CLI-first:
+
+```powershell
+python -m memsu policy evaluate --action-type suggestion --description "..."
+python -m memsu policy proposals
+python -m memsu policy decide <proposal_id> --decision approve
+python -m memsu policy events
+```
+
+A resident HTTP API is deferred until CLI latency, concurrency, or host
+integration requires it.
 
 ## Hermes Tools
 

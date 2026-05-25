@@ -2,6 +2,8 @@
 
 ## Current MVP Status
 
+V2 observe-layer planning is tracked in [PLAN_V2.md](PLAN_V2.md).
+
 Implemented:
 
 - repository foundation
@@ -14,19 +16,18 @@ Implemented:
 - explicit shell, git, Codex transcript, generic transcript, and workflow adapters
 - L0-L4 proactive policy engine with action proposals, configurable defaults, and policy event log
 - curator jobs for dedupe, stale detection, summaries, and conflict review queue
-- production hardening tools for migration status, backup, export, privacy review, service status, and sparse vector recall
+- production hardening tools for migration status, backup, export, privacy review, and sparse vector recall
 - CLI for init, doctor, event append/list, extract, candidate review, retain, recall, audit, and forget
-- local HTTP service
-- Hermes memory provider skeleton
+- optional V1 HTTP/provider compatibility code
 - Hermes skills and bootstrap prompt
-- PowerShell install, doctor, service startup/status, and Windows Scheduled Task scripts
+- PowerShell install and doctor scripts
 
 Known limitations:
 
 - LLM extraction requires an explicitly configured OpenAI-compatible endpoint, skips sensitive events, and still creates review-first candidates.
 - Agent observation is explicit transcript/workflow ingestion, not hidden desktop surveillance.
 - Policy configuration currently supports simple local defaults, not a full rule DSL.
-- Windows service packaging uses a user-level Scheduled Task, not a native Windows service.
+- The HTTP service/provider path is deferred until CLI latency, concurrency, or integration needs justify it.
 
 ## Phase 0: Repository Foundation
 
@@ -71,22 +72,22 @@ Success check:
 
 - local tools can write structured events without needing Hermes
 
-## Phase 2: Hermes Memory Provider
+## Phase 2: Agent CLI Bridge
 
-Goal: make memSu usable from Hermes.
+Goal: make memSu usable from Hermes and any other local agent without requiring
+a resident service.
 
 Deliverables:
 
-- `plugins/memory/memsu` Hermes provider
-- `prefetch(query)` for scoped recall
-- `sync_turn(...)` for post-turn ingestion
-- `on_session_end(...)` summary hook
-- tool schemas for recall, retain, audit, forget, and reflect
-- config docs for `memory.provider = memsu`
+- CLI JSON contract for recall, retain, audit, forget, policy, and candidate review
+- Hermes skills that call `python -m memsu ...`
+- explicit event ingestion commands for post-work summaries
+- optional provider/service compatibility only if a later bottleneck requires it
 
 Success check:
 
-- Hermes can recall memSu memory before a turn and sync conversation events after a turn
+- Hermes, Codex, or another local agent can recall and write memSu memory by
+  executing CLI commands
 
 ## Phase 2.5: Hermes Bootstrap Installer
 
@@ -97,11 +98,10 @@ Deliverables:
 
 - `scripts/install_hermes.ps1`
 - `scripts/doctor.ps1`
-- `scripts/start_service.ps1`
 - `hermes/prompts/bootstrap-hermes-memsu.md`
 - installer support for resolving `HERMES_HOME`
-- config backup before mutation
-- provider and skill copy/install logic
+- no Hermes config mutation unless explicitly requested
+- skill copy/install logic
 - local data directory and SQLite initialization
 - default policy file with high-risk actions disabled
 - synthetic event and recall smoke test
@@ -117,11 +117,11 @@ The bootstrap prompt should tell Hermes to:
 1. inspect installer scripts before executing them
 2. resolve the memSu repo path and Hermes home
 3. run the installer
-4. verify provider and skill installation
-5. ensure Hermes config uses `memory.provider = memsu`
-6. start or verify the local memSu service
+4. verify skill installation
+5. verify Hermes can execute `python -m memsu ...`
+6. avoid starting a resident memSu service
 7. run doctor
-8. report exact installed paths, config changes, service status, and test results
+8. report exact installed paths, config changes, CLI status, and test results
 
 Success check:
 
@@ -169,7 +169,7 @@ Deliverables:
 
 Success check:
 
-- at least Hermes, Codex, and shell/git activity can feed the same memory service
+- at least Hermes, Codex, and shell/git activity can feed the same local memory store
 
 ## Phase 5: Proactive Policy
 
@@ -214,30 +214,28 @@ Success check:
 
 ## Phase 7: Production Hardening
 
-Goal: make memSu reliable as a long-running local service.
+Goal: make memSu reliable as a local CLI-first memory store.
 
 Deliverables:
 
-- service supervision (local PID status/stop helpers and Windows logon task scripts implemented)
 - backups and export (implemented)
 - migration system (schema version table/status implemented)
-- structured logs (JSON server logs implemented)
 - privacy review tools (implemented)
 - optional vector backend (sparse vector backend implemented)
-- test suite for provider, storage, policy, and extraction (implemented)
+- test suite for bridge/storage compatibility, storage, policy, and extraction (implemented)
 
 Success check:
 
-- memSu can run continuously and recover from crashes without corrupting memory
+- memSu can be called repeatedly by schedulers or agents without corrupting memory
 
 ## First MVP Cut
 
 The smallest useful build is:
 
 1. SQLite event log
-2. Hermes memory provider
+2. CLI recall/retain/audit/forget
 3. manual `retain`, `recall`, `audit`, and `forget`
-4. post-turn event sync
+4. explicit event ingestion
 5. simple keyword plus scope-based recall
 
 Do not start with full autonomy, screen observation, or multi-agent policy

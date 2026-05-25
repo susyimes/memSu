@@ -1,7 +1,8 @@
 # memSu Production Hardening
 
-memSu is local-first. The MVP hardening layer focuses on recoverability,
-inspection, privacy review, and safe service operation.
+memSu is local-first and CLI-first. The hardening layer focuses on
+recoverability, inspection, privacy review, and safe repeated execution by local
+agents or schedulers.
 
 ## Migration Status
 
@@ -39,50 +40,23 @@ python -m memsu privacy scan
 The scanner looks for common sensitive patterns in recent events, memories, and
 candidates. It redacts previews before returning findings.
 
-## Service Supervision
+## Scheduled Execution
 
-Start:
-
-```powershell
-.\scripts\start_service.ps1
-```
-
-Status:
+memSu does not require a resident service. Use Hermes cron, Codex automation,
+Windows Task Scheduler, or another trusted local scheduler to run CLI jobs such
+as:
 
 ```powershell
-python -m memsu service status
-.\scripts\status_service.ps1
+python -m memsu doctor
+python -m memsu extract
+python -m memsu curator run
 ```
 
-Stop:
+V2 plans to add `python -m memsu observe run` as another scheduled CLI job.
 
-```powershell
-python -m memsu service stop
-```
-
-The local service uses a PID file under `MEMSU_HOME` or `~/.memsu`.
-
-Install user-level Windows logon startup:
-
-```powershell
-.\scripts\install_windows_task.ps1
-# preview only:
-.\scripts\install_windows_task.ps1 -WhatIf
-```
-
-Remove the logon task:
-
-```powershell
-.\scripts\uninstall_windows_task.ps1
-```
-
-This is intentionally a simple Scheduled Task wrapper around
-`scripts\start_service.ps1`, not a native Windows service.
-
-## Structured Logs
-
-The local HTTP service emits JSON logs to stderr for server startup and response
-events. `start_service.ps1` writes stderr to `memsu.err.log`.
+The deferred HTTP service path should be reconsidered only if CLI cold-start
+time, high-frequency recall, concurrency, or host integration becomes a real
+bottleneck.
 
 ## Sparse Vector Backend
 
@@ -96,11 +70,8 @@ python -m memsu vector recall "project memory"
 This is not an embedding model. It is a deterministic local retrieval backend
 that can be replaced later by a dense vector store.
 
-## HTTP API
+## Deferred Service Path
 
-- `POST /backup/create`
-- `POST /export/json`
-- `GET /privacy/scan`
-- `GET /migrate/status`
-- `POST /vector/rebuild`
-- `POST /vector/recall`
+Earlier V1 experiments include local HTTP service code. It is no longer the
+default hardening target. Treat it as compatibility code until the project has a
+measured need for a resident process.

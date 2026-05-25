@@ -40,12 +40,19 @@ python -m memsu curator conflicts
 python -m memsu curator runs
 ```
 
-## HTTP API
+## Integration Contract
 
-- `POST /curator/run`
-- `GET /curator/summaries`
-- `GET /curator/conflicts`
-- `GET /curator/runs`
+Curator jobs are CLI-first:
+
+```powershell
+python -m memsu curator run
+python -m memsu curator summaries
+python -m memsu curator conflicts
+python -m memsu curator runs
+```
+
+A resident HTTP API is deferred until there is a measured need for a long-running
+process.
 
 ## Hermes Tools
 
@@ -56,4 +63,3 @@ Hermes gets:
 
 The memory supervisor can use these tools during maintenance windows or when the
 user asks to inspect memory quality.
-

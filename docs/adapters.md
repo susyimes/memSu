@@ -80,15 +80,8 @@ python -m memsu adapter workflow `
   --repo susyimes/memSu
 ```
 
-## HTTP API
+## Integration Contract
 
-Equivalent local endpoints:
-
-- `POST /adapters/shell`
-- `POST /adapters/git`
-- `POST /adapters/codex`
-- `POST /adapters/transcript`
-- `POST /adapters/workflow`
-
-All endpoints write events to the same local store used by `/events`, `/recall`,
-`/audit`, and `/forget`.
+Adapters are CLI-first. Any trusted local agent can call these commands and
+write to the same local SQLite store. A resident HTTP service is deferred until
+there is a measured need for high-frequency, low-latency access.
