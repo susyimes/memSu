@@ -12,6 +12,7 @@ Implemented:
 - possible conflict hints for similar same-scope memories
 - explicit shell, git, Codex transcript, and workflow adapters
 - L0-L4 proactive policy engine with action proposals and policy event log
+- curator jobs for dedupe, stale detection, summaries, and conflict review queue
 - CLI for init, doctor, event append/list, extract, candidate review, retain, recall, audit, and forget
 - local HTTP service
 - Hermes memory provider skeleton
@@ -23,7 +24,6 @@ Not yet implemented:
 - LLM-based memory extraction
 - richer Codex and other agent adapters
 - richer proactive policy configuration
-- curator jobs
 - vector retrieval
 - production service supervision
 
@@ -199,12 +199,12 @@ Goal: keep long-term memory useful over time.
 
 Deliverables:
 
-- dedupe and merge jobs
-- stale memory detection
-- topic summaries
-- project-level summaries
-- conflict review queue
-- archive instead of hard delete by default
+- dedupe and merge jobs (exact duplicate archive implemented)
+- stale memory detection (implemented)
+- topic summaries (implemented)
+- project-level summaries (implemented)
+- conflict review queue (implemented)
+- archive instead of hard delete by default (implemented)
 
 Success check:
 

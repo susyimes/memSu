@@ -229,6 +229,47 @@ class MemSuStore:
 
                 CREATE INDEX IF NOT EXISTS idx_policy_events_timestamp
                     ON policy_events(timestamp);
+
+                CREATE TABLE IF NOT EXISTS memory_summaries (
+                    summary_id TEXT PRIMARY KEY,
+                    scope TEXT NOT NULL,
+                    topic TEXT NOT NULL,
+                    kind TEXT NOT NULL,
+                    summary TEXT NOT NULL,
+                    item_ids TEXT NOT NULL DEFAULT '[]',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    metadata TEXT NOT NULL DEFAULT '{}'
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_memory_summaries_scope
+                    ON memory_summaries(scope, kind);
+
+                CREATE TABLE IF NOT EXISTS conflict_reviews (
+                    review_id TEXT PRIMARY KEY,
+                    candidate_id TEXT NOT NULL,
+                    item_id TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'open',
+                    reason TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    metadata TEXT NOT NULL DEFAULT '{}'
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_conflict_reviews_status
+                    ON conflict_reviews(status, updated_at);
+
+                CREATE TABLE IF NOT EXISTS curator_runs (
+                    run_id TEXT PRIMARY KEY,
+                    status TEXT NOT NULL,
+                    started_at TEXT NOT NULL,
+                    finished_at TEXT NOT NULL,
+                    result TEXT NOT NULL DEFAULT '{}',
+                    metadata TEXT NOT NULL DEFAULT '{}'
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_curator_runs_finished
+                    ON curator_runs(finished_at);
                 """
             )
 
@@ -739,6 +780,86 @@ class MemSuStore:
             ).fetchall()
         return [self._policy_event_row_to_dict(row) for row in rows]
 
+    def run_curator(
+        self,
+        *,
+        stale_days: int = 90,
+        stale_salience_threshold: float = 0.3,
+    ) -> dict[str, Any]:
+        from .curator import run_curator
+
+        self.init()
+        with self.session() as conn:
+            return run_curator(
+                conn,
+                stale_days=stale_days,
+                stale_salience_threshold=stale_salience_threshold,
+            )
+
+    def list_memory_summaries(
+        self,
+        *,
+        scope: str = "",
+        kind: str = "",
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        self.init()
+        with self.session() as conn:
+            clauses = []
+            params: list[Any] = []
+            if scope:
+                clauses.append("scope = ?")
+                params.append(scope)
+            if kind:
+                clauses.append("kind = ?")
+                params.append(kind)
+            where = "WHERE " + " AND ".join(clauses) if clauses else ""
+            rows = conn.execute(
+                f"""
+                SELECT *
+                FROM memory_summaries
+                {where}
+                ORDER BY updated_at DESC
+                LIMIT ?
+                """,
+                (*params, limit),
+            ).fetchall()
+        return [self._summary_row_to_dict(row) for row in rows]
+
+    def list_conflict_reviews(
+        self,
+        *,
+        status: str = "open",
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        self.init()
+        with self.session() as conn:
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM conflict_reviews
+                WHERE status = ?
+                ORDER BY updated_at DESC
+                LIMIT ?
+                """,
+                (status, limit),
+            ).fetchall()
+        return [self._conflict_row_to_dict(row) for row in rows]
+
+    def list_curator_runs(self, *, limit: int = 20) -> list[dict[str, Any]]:
+        self.init()
+        with self.session() as conn:
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM curator_runs
+                ORDER BY finished_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [self._curator_run_row_to_dict(row) for row in rows]
+
     def retain_memory(
         self,
         content: str,
@@ -898,6 +1019,10 @@ class MemSuStore:
                 "SELECT COUNT(*) FROM action_proposals WHERE status = ?",
                 ("pending_confirmation",),
             ).fetchone()[0]
+            open_conflict_count = conn.execute(
+                "SELECT COUNT(*) FROM conflict_reviews WHERE status = ?",
+                ("open",),
+            ).fetchone()[0]
         return {
             "ok": True,
             "db_path": str(self.db_path),
@@ -905,6 +1030,7 @@ class MemSuStore:
             "active_memory_count": memory_count,
             "pending_candidate_count": pending_candidate_count,
             "pending_action_count": pending_action_count,
+            "open_conflict_count": open_conflict_count,
         }
 
     def _event_row_to_dict(self, row: sqlite3.Row) -> dict[str, Any]:
@@ -1081,5 +1207,40 @@ class MemSuStore:
             "decision": row["decision"],
             "reason": row["reason"],
             "timestamp": row["timestamp"],
+            "metadata": json_loads(row["metadata"], {}),
+        }
+
+    def _summary_row_to_dict(self, row: sqlite3.Row) -> dict[str, Any]:
+        return {
+            "summary_id": row["summary_id"],
+            "scope": row["scope"],
+            "topic": row["topic"],
+            "kind": row["kind"],
+            "summary": row["summary"],
+            "item_ids": json_loads(row["item_ids"], []),
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+            "metadata": json_loads(row["metadata"], {}),
+        }
+
+    def _conflict_row_to_dict(self, row: sqlite3.Row) -> dict[str, Any]:
+        return {
+            "review_id": row["review_id"],
+            "candidate_id": row["candidate_id"],
+            "item_id": row["item_id"],
+            "status": row["status"],
+            "reason": row["reason"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+            "metadata": json_loads(row["metadata"], {}),
+        }
+
+    def _curator_run_row_to_dict(self, row: sqlite3.Row) -> dict[str, Any]:
+        return {
+            "run_id": row["run_id"],
+            "status": row["status"],
+            "started_at": row["started_at"],
+            "finished_at": row["finished_at"],
+            "result": json_loads(row["result"], {}),
             "metadata": json_loads(row["metadata"], {}),
         }

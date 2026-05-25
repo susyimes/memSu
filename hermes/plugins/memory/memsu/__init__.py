@@ -177,6 +177,35 @@ POLICY_PROPOSALS_SCHEMA = {
     },
 }
 
+CURATOR_RUN_SCHEMA = {
+    "name": "memsu_curator_run",
+    "description": "Run memSu memory curation: dedupe, stale detection, summaries, and conflict queue refresh.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "stale_days": {"type": "integer", "description": "Age threshold for stale detection.", "default": 90},
+            "stale_salience_threshold": {"type": "number", "description": "Maximum salience to mark stale.", "default": 0.3},
+        },
+        "required": [],
+    },
+}
+
+CURATOR_STATUS_SCHEMA = {
+    "name": "memsu_curator_status",
+    "description": "Inspect memSu curator summaries, conflict reviews, or recent runs.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "view": {"type": "string", "description": "summaries, conflicts, or runs.", "default": "runs"},
+            "scope": {"type": "string", "description": "Optional summary scope filter."},
+            "kind": {"type": "string", "description": "Optional summary kind filter."},
+            "status": {"type": "string", "description": "Conflict status filter.", "default": "open"},
+            "limit": {"type": "integer", "description": "Maximum results.", "default": 20},
+        },
+        "required": [],
+    },
+}
+
 
 class MemSuMemoryProvider(MemoryProvider):
     def __init__(self):
@@ -205,6 +234,7 @@ class MemSuMemoryProvider(MemoryProvider):
             "Active. Use memsu_recall for scoped local memory, memsu_retain for durable facts, "
             "memsu_audit for review, memsu_candidates to review extracted candidates, "
             "memsu_policy_check before proactive actions, "
+            "memsu_curator_status to inspect memory maintenance, "
             "and memsu_forget only when the user asks to remove memory. "
             "Do not use memSu tools for high-risk external actions."
         )
@@ -317,6 +347,8 @@ class MemSuMemoryProvider(MemoryProvider):
             REJECT_CANDIDATE_SCHEMA,
             POLICY_CHECK_SCHEMA,
             POLICY_PROPOSALS_SCHEMA,
+            CURATOR_RUN_SCHEMA,
+            CURATOR_STATUS_SCHEMA,
         ]
 
     def handle_tool_call(self, tool_name: str, args: Dict[str, Any], **kwargs) -> str:
@@ -435,6 +467,38 @@ class MemSuMemoryProvider(MemoryProvider):
                 }
             )
             return json.dumps(self._get(f"/policy/proposals?{query}"), ensure_ascii=False)
+        if tool_name == "memsu_curator_run":
+            return json.dumps(
+                self._post(
+                    "/curator/run",
+                    {
+                        "stale_days": args.get("stale_days", 90),
+                        "stale_salience_threshold": args.get("stale_salience_threshold", 0.3),
+                    },
+                ),
+                ensure_ascii=False,
+            )
+        if tool_name == "memsu_curator_status":
+            view = args.get("view", "runs")
+            if view == "summaries":
+                query = urllib.parse.urlencode(
+                    {
+                        "scope": args.get("scope", ""),
+                        "kind": args.get("kind", ""),
+                        "limit": args.get("limit", 20),
+                    }
+                )
+                return json.dumps(self._get(f"/curator/summaries?{query}"), ensure_ascii=False)
+            if view == "conflicts":
+                query = urllib.parse.urlencode(
+                    {
+                        "status": args.get("status", "open"),
+                        "limit": args.get("limit", 20),
+                    }
+                )
+                return json.dumps(self._get(f"/curator/conflicts?{query}"), ensure_ascii=False)
+            query = urllib.parse.urlencode({"limit": args.get("limit", 20)})
+            return json.dumps(self._get(f"/curator/runs?{query}"), ensure_ascii=False)
         return json.dumps({"ok": False, "error": f"unknown tool: {tool_name}"})
 
     def _default_scope(self) -> str:

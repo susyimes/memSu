@@ -245,6 +245,40 @@ def cmd_policy_events(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_curator_run(args: argparse.Namespace) -> int:
+    result = MemSuStore(args.db).run_curator(
+        stale_days=args.stale_days,
+        stale_salience_threshold=args.stale_salience_threshold,
+    )
+    print_json(result)
+    return 0
+
+
+def cmd_curator_summaries(args: argparse.Namespace) -> int:
+    result = MemSuStore(args.db).list_memory_summaries(
+        scope=args.scope,
+        kind=args.kind,
+        limit=args.limit,
+    )
+    print_json({"summaries": result})
+    return 0
+
+
+def cmd_curator_conflicts(args: argparse.Namespace) -> int:
+    result = MemSuStore(args.db).list_conflict_reviews(
+        status=args.status,
+        limit=args.limit,
+    )
+    print_json({"conflicts": result})
+    return 0
+
+
+def cmd_curator_runs(args: argparse.Namespace) -> int:
+    result = MemSuStore(args.db).list_curator_runs(limit=args.limit)
+    print_json({"runs": result})
+    return 0
+
+
 def cmd_retain(args: argparse.Namespace) -> int:
     metadata = json.loads(args.metadata) if args.metadata else {}
     result = MemSuStore(args.db).retain_memory(
@@ -414,6 +448,29 @@ def build_parser() -> argparse.ArgumentParser:
     p_policy_events = policy_sub.add_parser("events", help="List policy events")
     p_policy_events.add_argument("--limit", type=int, default=50)
     p_policy_events.set_defaults(func=cmd_policy_events)
+
+    p_curator = sub.add_parser("curator", help="Run and inspect memory curator jobs")
+    curator_sub = p_curator.add_subparsers(dest="curator_command", required=True)
+
+    p_curator_run = curator_sub.add_parser("run", help="Run memory curation")
+    p_curator_run.add_argument("--stale-days", type=int, default=90)
+    p_curator_run.add_argument("--stale-salience-threshold", type=float, default=0.3)
+    p_curator_run.set_defaults(func=cmd_curator_run)
+
+    p_curator_summaries = curator_sub.add_parser("summaries", help="List memory summaries")
+    p_curator_summaries.add_argument("--scope", default="")
+    p_curator_summaries.add_argument("--kind", default="")
+    p_curator_summaries.add_argument("--limit", type=int, default=50)
+    p_curator_summaries.set_defaults(func=cmd_curator_summaries)
+
+    p_curator_conflicts = curator_sub.add_parser("conflicts", help="List conflict reviews")
+    p_curator_conflicts.add_argument("--status", default="open")
+    p_curator_conflicts.add_argument("--limit", type=int, default=50)
+    p_curator_conflicts.set_defaults(func=cmd_curator_conflicts)
+
+    p_curator_runs = curator_sub.add_parser("runs", help="List curator runs")
+    p_curator_runs.add_argument("--limit", type=int, default=20)
+    p_curator_runs.set_defaults(func=cmd_curator_runs)
 
     p_retain = sub.add_parser("retain", help="Retain a memory item")
     p_retain.add_argument("content")

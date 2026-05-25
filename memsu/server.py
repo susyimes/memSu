@@ -76,6 +76,30 @@ class MemSuHandler(BaseHTTPRequestHandler):
             )
             write_json(self, 200, {"events": result})
             return
+        if parsed.path == "/curator/summaries":
+            params = parse_qs(parsed.query)
+            result = self.store.list_memory_summaries(
+                scope=params.get("scope", [""])[0],
+                kind=params.get("kind", [""])[0],
+                limit=int(params.get("limit", ["50"])[0]),
+            )
+            write_json(self, 200, {"summaries": result})
+            return
+        if parsed.path == "/curator/conflicts":
+            params = parse_qs(parsed.query)
+            result = self.store.list_conflict_reviews(
+                status=params.get("status", ["open"])[0],
+                limit=int(params.get("limit", ["50"])[0]),
+            )
+            write_json(self, 200, {"conflicts": result})
+            return
+        if parsed.path == "/curator/runs":
+            params = parse_qs(parsed.query)
+            result = self.store.list_curator_runs(
+                limit=int(params.get("limit", ["20"])[0]),
+            )
+            write_json(self, 200, {"runs": result})
+            return
         write_json(self, 404, {"ok": False, "error": "not found"})
 
     def do_POST(self) -> None:
@@ -153,6 +177,13 @@ class MemSuHandler(BaseHTTPRequestHandler):
                     body.get("proposal_id", ""),
                     decision=body.get("decision", ""),
                     reason=body.get("reason", ""),
+                )
+                write_json(self, 200, result)
+                return
+            if self.path == "/curator/run":
+                result = self.store.run_curator(
+                    stale_days=int(body.get("stale_days", 90)),
+                    stale_salience_threshold=float(body.get("stale_salience_threshold", 0.3)),
                 )
                 write_json(self, 200, result)
                 return

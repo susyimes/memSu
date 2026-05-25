@@ -262,6 +262,16 @@ python -m memsu policy proposals --status pending_confirmation
 
 See [docs/policy.md](docs/policy.md) for policy details.
 
+Run memory curation:
+
+```powershell
+python -m memsu curator run
+python -m memsu curator summaries --scope project:memSu
+python -m memsu curator conflicts
+```
+
+See [docs/curator.md](docs/curator.md) for curator details.
+
 Install into Hermes:
 
 ```powershell
@@ -300,6 +310,7 @@ Implemented:
 - possible conflict hints for similar same-scope memories
 - explicit shell, git, Codex transcript, and workflow adapters
 - L0-L4 proactive policy engine with action proposals, rate limits, quiet-hour deferral, and policy event log
+- curator jobs for dedupe, stale detection, summaries, and conflict review queue
 - CLI commands for init, doctor, event append/list, extract, candidate review, retain, recall, audit, and forget
 - local HTTP service for Hermes integration
 - Hermes external memory provider skeleton
