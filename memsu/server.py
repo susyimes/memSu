@@ -10,6 +10,7 @@ from .adapters import (
     record_workflow_result,
     snapshot_git_repo,
 )
+from .logging_utils import log_event
 from .store import MemSuStore
 
 
@@ -30,6 +31,7 @@ def write_json(handler: BaseHTTPRequestHandler, status: int, payload: dict | lis
     handler.send_header("Content-Length", str(len(data)))
     handler.end_headers()
     handler.wfile.write(data)
+    log_event("http_response", path=handler.path, status=status, bytes=len(data))
 
 
 class MemSuHandler(BaseHTTPRequestHandler):
@@ -99,6 +101,14 @@ class MemSuHandler(BaseHTTPRequestHandler):
                 limit=int(params.get("limit", ["20"])[0]),
             )
             write_json(self, 200, {"runs": result})
+            return
+        if parsed.path == "/privacy/scan":
+            params = parse_qs(parsed.query)
+            result = self.store.privacy_scan(limit=int(params.get("limit", ["200"])[0]))
+            write_json(self, 200, result)
+            return
+        if parsed.path == "/migrate/status":
+            write_json(self, 200, self.store.migration_status())
             return
         write_json(self, 404, {"ok": False, "error": "not found"})
 
@@ -187,6 +197,26 @@ class MemSuHandler(BaseHTTPRequestHandler):
                 )
                 write_json(self, 200, result)
                 return
+            if self.path == "/backup/create":
+                result = self.store.create_backup(backup_dir=body.get("backup_dir") or None)
+                write_json(self, 200, result)
+                return
+            if self.path == "/export/json":
+                result = self.store.export_json(output_path=body.get("output_path") or None)
+                write_json(self, 200, result)
+                return
+            if self.path == "/vector/rebuild":
+                result = self.store.rebuild_vector_index()
+                write_json(self, 200, result)
+                return
+            if self.path == "/vector/recall":
+                result = self.store.vector_recall(
+                    body.get("query", ""),
+                    scope=body.get("scope", ""),
+                    limit=int(body.get("limit", 5)),
+                )
+                write_json(self, 200, {"memories": result})
+                return
             write_json(self, 404, {"ok": False, "error": "not found"})
         except Exception as exc:
             write_json(self, 400, {"ok": False, "error": str(exc)})
@@ -195,5 +225,6 @@ class MemSuHandler(BaseHTTPRequestHandler):
 def run_server(host: str = "127.0.0.1", port: int = 8765) -> None:
     MemSuHandler.store.init()
     server = ThreadingHTTPServer((host, port), MemSuHandler)
+    log_event("server_start", host=host, port=port, db_path=str(MemSuHandler.store.db_path))
     print(f"memSu service listening on http://{host}:{port}", flush=True)
     server.serve_forever()

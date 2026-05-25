@@ -13,6 +13,7 @@ Implemented:
 - explicit shell, git, Codex transcript, and workflow adapters
 - L0-L4 proactive policy engine with action proposals and policy event log
 - curator jobs for dedupe, stale detection, summaries, and conflict review queue
+- production hardening tools for migration status, backup, export, privacy review, service status, and sparse vector recall
 - CLI for init, doctor, event append/list, extract, candidate review, retain, recall, audit, and forget
 - local HTTP service
 - Hermes memory provider skeleton
@@ -24,8 +25,7 @@ Not yet implemented:
 - LLM-based memory extraction
 - richer Codex and other agent adapters
 - richer proactive policy configuration
-- vector retrieval
-- production service supervision
+- production service packaging beyond local PID supervision
 
 ## Phase 0: Repository Foundation
 
@@ -216,13 +216,13 @@ Goal: make memSu reliable as a long-running local service.
 
 Deliverables:
 
-- service supervision
-- backups and export
-- migration system
-- structured logs
-- privacy review tools
-- optional vector backend
-- test suite for provider, storage, policy, and extraction
+- service supervision (local PID status/stop helpers implemented)
+- backups and export (implemented)
+- migration system (schema version table/status implemented)
+- structured logs (JSON server logs implemented)
+- privacy review tools (implemented)
+- optional vector backend (sparse vector backend implemented)
+- test suite for provider, storage, policy, and extraction (implemented)
 
 Success check:
 

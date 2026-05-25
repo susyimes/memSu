@@ -17,6 +17,14 @@ try {
     if ($LASTEXITCODE -ne 0) {
         throw "memSu doctor failed"
     }
+    python -m memsu migrate status
+    if ($LASTEXITCODE -ne 0) {
+        throw "memSu migration status failed"
+    }
+    python -m memsu privacy scan --limit 20
+    if ($LASTEXITCODE -ne 0) {
+        throw "memSu privacy scan failed"
+    }
 
     $pluginPath = Join-Path $HermesHome "plugins\memsu\__init__.py"
     $skillPath = Join-Path $HermesHome "skills\memory-capture\SKILL.md"
@@ -28,4 +36,3 @@ try {
 finally {
     Pop-Location
 }
-

@@ -11,6 +11,7 @@ from .adapters import (
     record_workflow_result,
     snapshot_git_repo,
 )
+from .hardening import service_status, service_stop
 from .paths import default_db_path, default_policy_path, memsu_home
 from .server import run_server
 from .store import EVENT_TYPES, MEMORY_TYPES, MemSuStore
@@ -279,6 +280,56 @@ def cmd_curator_runs(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_backup_create(args: argparse.Namespace) -> int:
+    result = MemSuStore(args.db).create_backup(backup_dir=args.backup_dir or None)
+    print_json(result)
+    return 0
+
+
+def cmd_export_json(args: argparse.Namespace) -> int:
+    result = MemSuStore(args.db).export_json(output_path=args.output or None)
+    print_json(result)
+    return 0
+
+
+def cmd_privacy_scan(args: argparse.Namespace) -> int:
+    result = MemSuStore(args.db).privacy_scan(limit=args.limit)
+    print_json(result)
+    return 0
+
+
+def cmd_migrate_status(args: argparse.Namespace) -> int:
+    result = MemSuStore(args.db).migration_status()
+    print_json(result)
+    return 0
+
+
+def cmd_vector_rebuild(args: argparse.Namespace) -> int:
+    result = MemSuStore(args.db).rebuild_vector_index()
+    print_json(result)
+    return 0
+
+
+def cmd_vector_recall(args: argparse.Namespace) -> int:
+    result = MemSuStore(args.db).vector_recall(
+        args.query,
+        scope=args.scope,
+        limit=args.limit,
+    )
+    print_json({"memories": result})
+    return 0
+
+
+def cmd_service_status(args: argparse.Namespace) -> int:
+    print_json(service_status(pid_file=args.pid_file or None))
+    return 0
+
+
+def cmd_service_stop(args: argparse.Namespace) -> int:
+    print_json(service_stop(pid_file=args.pid_file or None))
+    return 0
+
+
 def cmd_retain(args: argparse.Namespace) -> int:
     metadata = json.loads(args.metadata) if args.metadata else {}
     result = MemSuStore(args.db).retain_memory(
@@ -471,6 +522,48 @@ def build_parser() -> argparse.ArgumentParser:
     p_curator_runs = curator_sub.add_parser("runs", help="List curator runs")
     p_curator_runs.add_argument("--limit", type=int, default=20)
     p_curator_runs.set_defaults(func=cmd_curator_runs)
+
+    p_backup = sub.add_parser("backup", help="Create database backups")
+    backup_sub = p_backup.add_subparsers(dest="backup_command", required=True)
+    p_backup_create = backup_sub.add_parser("create", help="Create a SQLite backup")
+    p_backup_create.add_argument("--backup-dir", default="")
+    p_backup_create.set_defaults(func=cmd_backup_create)
+
+    p_export = sub.add_parser("export", help="Export memSu data")
+    export_sub = p_export.add_subparsers(dest="export_command", required=True)
+    p_export_json = export_sub.add_parser("json", help="Export data as JSON")
+    p_export_json.add_argument("--output", default="")
+    p_export_json.set_defaults(func=cmd_export_json)
+
+    p_privacy = sub.add_parser("privacy", help="Privacy review tools")
+    privacy_sub = p_privacy.add_subparsers(dest="privacy_command", required=True)
+    p_privacy_scan = privacy_sub.add_parser("scan", help="Scan recent records for sensitive patterns")
+    p_privacy_scan.add_argument("--limit", type=int, default=200)
+    p_privacy_scan.set_defaults(func=cmd_privacy_scan)
+
+    p_migrate = sub.add_parser("migrate", help="Schema migration helpers")
+    migrate_sub = p_migrate.add_subparsers(dest="migrate_command", required=True)
+    p_migrate_status = migrate_sub.add_parser("status", help="Show schema migration status")
+    p_migrate_status.set_defaults(func=cmd_migrate_status)
+
+    p_vector = sub.add_parser("vector", help="Sparse vector backend")
+    vector_sub = p_vector.add_subparsers(dest="vector_command", required=True)
+    p_vector_rebuild = vector_sub.add_parser("rebuild", help="Rebuild sparse vector index")
+    p_vector_rebuild.set_defaults(func=cmd_vector_rebuild)
+    p_vector_recall = vector_sub.add_parser("recall", help="Recall using sparse vector scoring")
+    p_vector_recall.add_argument("query")
+    p_vector_recall.add_argument("--scope", default="")
+    p_vector_recall.add_argument("--limit", type=int, default=5)
+    p_vector_recall.set_defaults(func=cmd_vector_recall)
+
+    p_service = sub.add_parser("service", help="Local service supervision helpers")
+    service_sub = p_service.add_subparsers(dest="service_command", required=True)
+    p_service_status = service_sub.add_parser("status", help="Check service PID status")
+    p_service_status.add_argument("--pid-file", default="")
+    p_service_status.set_defaults(func=cmd_service_status)
+    p_service_stop = service_sub.add_parser("stop", help="Stop service from PID file")
+    p_service_stop.add_argument("--pid-file", default="")
+    p_service_stop.set_defaults(func=cmd_service_stop)
 
     p_retain = sub.add_parser("retain", help="Retain a memory item")
     p_retain.add_argument("content")

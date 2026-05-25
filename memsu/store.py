@@ -40,6 +40,7 @@ MEMORY_TYPES = {
 ACTIVE_STATUS = "active"
 PENDING_CANDIDATE_STATUS = "pending"
 SUGGESTION_COOLDOWN_SECONDS = 300
+SCHEMA_VERSION = 7
 
 
 def utc_now() -> str:
@@ -270,7 +271,29 @@ class MemSuStore:
 
                 CREATE INDEX IF NOT EXISTS idx_curator_runs_finished
                     ON curator_runs(finished_at);
+
+                CREATE TABLE IF NOT EXISTS vector_index (
+                    item_id TEXT PRIMARY KEY,
+                    scope TEXT NOT NULL,
+                    terms_json TEXT NOT NULL DEFAULT '{}',
+                    updated_at TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_vector_index_scope
+                    ON vector_index(scope);
+
+                CREATE TABLE IF NOT EXISTS schema_migrations (
+                    version INTEGER PRIMARY KEY,
+                    applied_at TEXT NOT NULL
+                );
                 """
+            )
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO schema_migrations(version, applied_at)
+                VALUES (?, ?)
+                """,
+                (SCHEMA_VERSION, utc_now()),
             )
 
     def append_event(
@@ -860,6 +883,52 @@ class MemSuStore:
             ).fetchall()
         return [self._curator_run_row_to_dict(row) for row in rows]
 
+    def migration_status(self) -> dict[str, Any]:
+        self.init()
+        with self.session() as conn:
+            rows = conn.execute(
+                "SELECT version, applied_at FROM schema_migrations ORDER BY version"
+            ).fetchall()
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "applied": [dict(row) for row in rows],
+        }
+
+    def create_backup(self, *, backup_dir: str | Path | None = None) -> dict[str, Any]:
+        from .hardening import create_backup
+
+        return create_backup(self, backup_dir=backup_dir)
+
+    def export_json(self, *, output_path: str | Path | None = None) -> dict[str, Any]:
+        from .hardening import export_json
+
+        return export_json(self, output_path=output_path)
+
+    def privacy_scan(self, *, limit: int = 200) -> dict[str, Any]:
+        from .hardening import privacy_scan
+
+        return privacy_scan(self, limit=limit)
+
+    def rebuild_vector_index(self) -> dict[str, Any]:
+        from .vector import rebuild_vector_index
+
+        self.init()
+        with self.session() as conn:
+            return rebuild_vector_index(conn)
+
+    def vector_recall(
+        self,
+        query: str,
+        *,
+        scope: str = "",
+        limit: int = 5,
+    ) -> list[dict[str, Any]]:
+        from .vector import sparse_vector_recall
+
+        self.init()
+        with self.session() as conn:
+            return sparse_vector_recall(conn, query=query, scope=scope, limit=limit)
+
     def retain_memory(
         self,
         content: str,
@@ -1023,14 +1092,17 @@ class MemSuStore:
                 "SELECT COUNT(*) FROM conflict_reviews WHERE status = ?",
                 ("open",),
             ).fetchone()[0]
+            vector_count = conn.execute("SELECT COUNT(*) FROM vector_index").fetchone()[0]
         return {
             "ok": True,
             "db_path": str(self.db_path),
+            "schema_version": SCHEMA_VERSION,
             "event_count": event_count,
             "active_memory_count": memory_count,
             "pending_candidate_count": pending_candidate_count,
             "pending_action_count": pending_action_count,
             "open_conflict_count": open_conflict_count,
+            "vector_index_count": vector_count,
         }
 
     def _event_row_to_dict(self, row: sqlite3.Row) -> dict[str, Any]:

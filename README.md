@@ -272,6 +272,19 @@ python -m memsu curator conflicts
 
 See [docs/curator.md](docs/curator.md) for curator details.
 
+Run hardening tools:
+
+```powershell
+python -m memsu migrate status
+python -m memsu backup create
+python -m memsu export json
+python -m memsu privacy scan
+python -m memsu vector rebuild
+python -m memsu service status
+```
+
+See [docs/hardening.md](docs/hardening.md) for hardening details.
+
 Install into Hermes:
 
 ```powershell
@@ -311,6 +324,7 @@ Implemented:
 - explicit shell, git, Codex transcript, and workflow adapters
 - L0-L4 proactive policy engine with action proposals, rate limits, quiet-hour deferral, and policy event log
 - curator jobs for dedupe, stale detection, summaries, and conflict review queue
+- production hardening tools for migration status, backup, export, privacy review, service status, and sparse vector recall
 - CLI commands for init, doctor, event append/list, extract, candidate review, retain, recall, audit, and forget
 - local HTTP service for Hermes integration
 - Hermes external memory provider skeleton
