@@ -1,5 +1,27 @@
 # memSu Implementation Plan
 
+## Current MVP Status
+
+Implemented:
+
+- repository foundation
+- SQLite-backed event log
+- basic memory item store
+- CLI for init, doctor, event append/list, retain, recall, audit, and forget
+- local HTTP service
+- Hermes memory provider skeleton
+- Hermes skills and bootstrap prompt
+- PowerShell install, doctor, and service startup scripts
+
+Not yet implemented:
+
+- automatic LLM memory extraction
+- Codex and other agent adapters
+- proactive policy engine beyond documented rules and default policy file
+- curator jobs
+- vector retrieval
+- production service supervision
+
 ## Phase 0: Repository Foundation
 
 Goal: establish the project shape and working assumptions.

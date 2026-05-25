@@ -1,0 +1,225 @@
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from typing import Any
+
+from .paths import default_db_path, default_policy_path, memsu_home
+from .server import run_server
+from .store import EVENT_TYPES, MEMORY_TYPES, MemSuStore
+
+
+DEFAULT_POLICY = """# memSu default policy
+risk_levels:
+  L0: automatic_internal_maintenance
+  L1: automatic_passive_recall
+  L2: proactive_suggestions
+  L3: user_confirmation_required
+  L4: forbidden_or_restricted
+
+defaults:
+  proactive_external_actions: false
+  cross_agent_sensitive_sharing: false
+  hard_delete_without_confirmation: false
+"""
+
+
+def print_json(value: Any) -> None:
+    print(json.dumps(value, ensure_ascii=False, indent=2))
+
+
+def ensure_policy_file() -> None:
+    path = default_policy_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.exists():
+        path.write_text(DEFAULT_POLICY, encoding="utf-8")
+
+
+def cmd_init(args: argparse.Namespace) -> int:
+    store = MemSuStore(args.db)
+    store.init()
+    ensure_policy_file()
+    print_json({"ok": True, "db_path": str(store.db_path), "home": str(memsu_home())})
+    return 0
+
+
+def cmd_doctor(args: argparse.Namespace) -> int:
+    store = MemSuStore(args.db)
+    store.init()
+    event = store.append_event(
+        source_agent="doctor",
+        source_type="self_test",
+        actor="system",
+        event_type="workflow_result",
+        content="memSu doctor event append smoke test",
+        metadata={"doctor": True},
+    )
+    memory = store.retain_memory(
+        "memSu doctor recall smoke test memory",
+        type="note",
+        scope="doctor",
+        source_event_ids=[event["event_id"]],
+    )
+    recall = store.recall("doctor recall", scope="doctor", limit=3)
+    health = store.health()
+    ok = bool(recall)
+    print_json(
+        {
+            "ok": ok,
+            "health": health,
+            "event": event,
+            "memory": memory,
+            "recall_count": len(recall),
+            "policy_path": str(default_policy_path()),
+        }
+    )
+    return 0 if ok else 1
+
+
+def cmd_event_append(args: argparse.Namespace) -> int:
+    metadata = json.loads(args.metadata) if args.metadata else {}
+    artifact_refs = json.loads(args.artifact_refs) if args.artifact_refs else []
+    result = MemSuStore(args.db).append_event(
+        source_agent=args.source_agent,
+        source_type=args.source_type,
+        actor=args.actor,
+        event_type=args.event_type,
+        content=args.content,
+        workspace=args.workspace,
+        repo=args.repo,
+        cwd=args.cwd,
+        thread_id=args.thread_id,
+        task_id=args.task_id,
+        content_ref=args.content_ref,
+        artifact_refs=artifact_refs,
+        sensitivity=args.sensitivity,
+        metadata=metadata,
+    )
+    print_json(result)
+    return 0
+
+
+def cmd_event_list(args: argparse.Namespace) -> int:
+    print_json({"events": MemSuStore(args.db).list_events(limit=args.limit)})
+    return 0
+
+
+def cmd_retain(args: argparse.Namespace) -> int:
+    metadata = json.loads(args.metadata) if args.metadata else {}
+    result = MemSuStore(args.db).retain_memory(
+        args.content,
+        type=args.type,
+        scope=args.scope,
+        confidence=args.confidence,
+        salience=args.salience,
+        source_event_ids=args.source_event_id or [],
+        metadata=metadata,
+    )
+    print_json(result)
+    return 0
+
+
+def cmd_recall(args: argparse.Namespace) -> int:
+    result = MemSuStore(args.db).recall(args.query, scope=args.scope, limit=args.limit)
+    print_json({"memories": result})
+    return 0
+
+
+def cmd_audit(args: argparse.Namespace) -> int:
+    result = MemSuStore(args.db).audit(
+        scope=args.scope, status=args.status, limit=args.limit
+    )
+    print_json({"memories": result})
+    return 0
+
+
+def cmd_forget(args: argparse.Namespace) -> int:
+    result = MemSuStore(args.db).forget(args.item_id, reason=args.reason)
+    print_json(result)
+    return 0
+
+
+def cmd_serve(args: argparse.Namespace) -> int:
+    run_server(host=args.host, port=args.port)
+    return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="memsu", description="memSu local memory supervisor")
+    parser.add_argument("--db", default=None, help="SQLite database path")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    p_init = sub.add_parser("init", help="Initialize local memSu storage")
+    p_init.set_defaults(func=cmd_init)
+
+    p_doctor = sub.add_parser("doctor", help="Run a local smoke test")
+    p_doctor.set_defaults(func=cmd_doctor)
+
+    p_serve = sub.add_parser("serve", help="Run the local HTTP service")
+    p_serve.add_argument("--host", default="127.0.0.1")
+    p_serve.add_argument("--port", type=int, default=8765)
+    p_serve.set_defaults(func=cmd_serve)
+
+    p_event = sub.add_parser("event", help="Event log operations")
+    event_sub = p_event.add_subparsers(dest="event_command", required=True)
+    p_event_append = event_sub.add_parser("append", help="Append an observation event")
+    p_event_append.add_argument("--source-agent", required=True)
+    p_event_append.add_argument("--source-type", default="manual")
+    p_event_append.add_argument("--actor", default="user")
+    p_event_append.add_argument("--event-type", choices=sorted(EVENT_TYPES), default="workflow_result")
+    p_event_append.add_argument("--content", default="")
+    p_event_append.add_argument("--workspace", default="")
+    p_event_append.add_argument("--repo", default="")
+    p_event_append.add_argument("--cwd", default="")
+    p_event_append.add_argument("--thread-id", default="")
+    p_event_append.add_argument("--task-id", default="")
+    p_event_append.add_argument("--content-ref", default="")
+    p_event_append.add_argument("--artifact-refs", default="")
+    p_event_append.add_argument("--sensitivity", default="normal")
+    p_event_append.add_argument("--metadata", default="")
+    p_event_append.set_defaults(func=cmd_event_append)
+
+    p_event_list = event_sub.add_parser("list", help="List recent events")
+    p_event_list.add_argument("--limit", type=int, default=20)
+    p_event_list.set_defaults(func=cmd_event_list)
+
+    p_retain = sub.add_parser("retain", help="Retain a memory item")
+    p_retain.add_argument("content")
+    p_retain.add_argument("--type", choices=sorted(MEMORY_TYPES), default="note")
+    p_retain.add_argument("--scope", default="global_user")
+    p_retain.add_argument("--confidence", type=float, default=0.7)
+    p_retain.add_argument("--salience", type=float, default=0.5)
+    p_retain.add_argument("--source-event-id", action="append")
+    p_retain.add_argument("--metadata", default="")
+    p_retain.set_defaults(func=cmd_retain)
+
+    p_recall = sub.add_parser("recall", help="Recall memories by keyword and scope")
+    p_recall.add_argument("query")
+    p_recall.add_argument("--scope", default="")
+    p_recall.add_argument("--limit", type=int, default=5)
+    p_recall.set_defaults(func=cmd_recall)
+
+    p_audit = sub.add_parser("audit", help="List memory items")
+    p_audit.add_argument("--scope", default="")
+    p_audit.add_argument("--status", default="active")
+    p_audit.add_argument("--limit", type=int, default=50)
+    p_audit.set_defaults(func=cmd_audit)
+
+    p_forget = sub.add_parser("forget", help="Archive a memory item")
+    p_forget.add_argument("item_id")
+    p_forget.add_argument("--reason", default="")
+    p_forget.set_defaults(func=cmd_forget)
+
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    try:
+        return args.func(args)
+    except Exception as exc:
+        print(f"memsu: {exc}", file=sys.stderr)
+        return 1
+

@@ -201,6 +201,50 @@ High-risk operations such as deleting memory, sending external messages, editing
 files, changing permissions, or sharing sensitive information across agents must
 require explicit confirmation.
 
+## MVP Usage
+
+memSu currently ships a standard-library-first local MVP.
+
+Initialize storage:
+
+```powershell
+python -m memsu init
+```
+
+Run a smoke test:
+
+```powershell
+python -m memsu doctor
+```
+
+Start the local service:
+
+```powershell
+.\scripts\start_service.ps1
+```
+
+Add and recall memory:
+
+```powershell
+python -m memsu retain "memSu uses SQLite for the first MVP" --type decision --scope project:memsu
+python -m memsu recall "SQLite MVP" --scope project:memsu
+```
+
+Install into Hermes:
+
+```powershell
+.\scripts\install_hermes.ps1 -PatchConfig
+.\scripts\doctor.ps1
+```
+
+Hermes should then use:
+
+```yaml
+memory:
+  enabled: true
+  provider: memsu
+```
+
 ## Non-goals
 
 - Global keylogging
@@ -213,12 +257,27 @@ require explicit confirmation.
 
 ## Current Status
 
-Design stage.
+MVP implementation stage.
 
-The first implementation should prove the core loop:
+Implemented:
+
+- SQLite event log
+- scoped memory items
+- CLI commands for init, doctor, event append/list, retain, recall, audit, and forget
+- local HTTP service for Hermes integration
+- Hermes external memory provider skeleton
+- Hermes memory skills
+- bootstrap prompt
+- PowerShell installer, doctor, and service startup scripts
+
+The current implementation proves the first core loop:
 
 1. Observe Hermes and one coding agent.
 2. Store structured events locally.
 3. Extract scoped memory.
 4. Serve recall back to Hermes through a memory provider.
 5. Provide audit and forget operations.
+
+Extraction is still manual or tool-driven in the MVP. LLM-based candidate
+extraction, curator jobs, richer policy enforcement, and multi-agent adapters
+belong to later phases.

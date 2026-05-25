@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "memsu"
+version = "0.1.0"
+description = "Local memory supervisor for Hermes and desktop agents."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "susyimes" }]
+dependencies = []
+
+[project.scripts]
+memsu = "memsu.cli:main"
+
+[tool.setuptools]
+packages = ["memsu"]
+
