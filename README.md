@@ -192,6 +192,19 @@ It should:
 - recommend new skills when repeated workflows appear
 - generate proactive suggestions only within policy limits
 
+### Autonomous Advancement Agent
+
+The next layer is an advancement agent that uses memSu's existing observations,
+findings, memories, pending candidates, and policy engine to keep local work
+moving without taking unsafe control of the machine.
+
+It should detect active work lines, rank evidence-backed next-step
+opportunities, run only L0/L1 maintenance automatically, record L2 suggestions,
+and create L3 action proposals for user confirmation. Observation answers "what
+can be seen"; advancement answers "what should happen next, within policy".
+
+See [PLAN_AUTO.md](PLAN_AUTO.md).
+
 ## Policy Model
 
 memSu should separate memory from action.
@@ -277,9 +290,28 @@ snapshot row in SQLite. See [docs/observe.md](docs/observe.md).
 
 V3 planning explores an agent-led observe mode where the model chooses safe
 local read-only probes, records evidence, and proposes memory candidates instead
-of relying on a fixed source-reader checklist. V3 also introduces a user-editable
-`${MEMSU_HOME:-~/.memsu}/inspire.md` so the user can describe important local
-directories, tools, and observation preferences. See [PLAN_V3.md](PLAN_V3.md).
+of relying on a fixed source-reader checklist. V3 also introduces user-editable
+inspire notes so the user can describe important local directories, tools, and
+observation preferences:
+
+```text
+${MEMSU_HOME:-~/.memsu}/inspire.md
+${MEMSU_HOME:-~/.memsu}/inspire.d/*.md
+```
+
+Use `inspire.md` for the main high-signal notes. Use `inspire.d` for split
+topic files such as `projects.md`, `agents.md`, or `privacy.md` when the main
+file gets crowded. During V3 agent-led planning, memSu reads the main file first
+and then top-level markdown files in `inspire.d` sorted by file name. These
+notes are hints, not strict allowlists. See [PLAN_V3.md](PLAN_V3.md).
+
+V4 starts by making inspire notes more actionable without hard-coding personal
+absolute paths. The starter `inspire.d` files describe local signal surfaces the
+agent should consider at run time: file modification times, Git log/status/stat
+signals, Windows Recent shortcuts, PowerShell history, current processes and
+window titles, local agent session metadata, and build/release artifacts. The
+agent should discover concrete paths from the machine state and evidence rather
+than relying on a brittle path list.
 
 V3 helper commands:
 
@@ -350,7 +382,7 @@ Implemented:
 - scoped memory items
 - CLI-first status and discovery manifests
 - observe snapshots written to `${MEMSU_HOME:-~/.memsu}/observe/YYYY-MM-DD.md`
-- V3 user-editable `${MEMSU_HOME:-~/.memsu}/inspire.md`
+- V3 user-editable `${MEMSU_HOME:-~/.memsu}/inspire.md` and `inspire.d/*.md`
 - V3 observation run, evidence reference, and finding tables
 - initial `observe agent` planning entrypoint
 - rule-based and optional OpenAI-compatible LLM candidate extraction from events

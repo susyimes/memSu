@@ -36,7 +36,14 @@ class ObserveTests(unittest.TestCase):
             encoding="utf-8",
         )
         (codex_sessions / "session.jsonl").write_text(
-            "{\"summary\":\"recent coding session\"}\n",
+            "\n".join(
+                [
+                    '{"type":"session_meta","payload":{"cwd":"C:/work/memSu"}}',
+                    '{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"让 observe 保存 agent 会话摘要"}]}}',
+                    '{"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"已把最近会话摘要写入 observe。"}]}}',
+                ]
+            )
+            + "\n",
             encoding="utf-8",
         )
         secret_file = evidence_home / ".codex" / "sessions" / "token.secret"
@@ -51,8 +58,10 @@ class ObserveTests(unittest.TestCase):
         observe_path = Path(result["observe_path"])
         self.assertTrue(observe_path.exists())
         content = observe_path.read_text(encoding="utf-8")
-        self.assertIn("## Snapshot 09:30", content)
-        self.assertIn("### Current picture", content)
+        self.assertIn("## 快照 09:30", content)
+        self.assertIn("### 当前图景", content)
+        self.assertIn("### 最近 Agent 会话摘要", content)
+        self.assertIn("让 observe 保存 agent 会话摘要", content)
         self.assertNotIn("do-not-read", content)
 
         snapshots = self.store.list_observation_snapshots(local_date="2026-05-25")
@@ -92,7 +101,7 @@ class ObserveTests(unittest.TestCase):
 
         fact = openclaw_runs_fact(runs_db)
 
-        self.assertIn("with 1 tables", fact)
+        self.assertIn("包含 1 张表", fact)
         self.assertFalse((self.root / "runs.sqlite-wal").exists())
         self.assertFalse((self.root / "runs.sqlite-shm").exists())
 

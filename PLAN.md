@@ -4,6 +4,8 @@
 
 V2 observe-layer planning is tracked in [PLAN_V2.md](PLAN_V2.md).
 V3 agent-led observation planning is tracked in [PLAN_V3.md](PLAN_V3.md).
+V4 inspire-driven observation planning is tracked in [PLAN_V4.md](PLAN_V4.md).
+Autonomous advancement planning is tracked in [PLAN_AUTO.md](PLAN_AUTO.md).
 
 Implemented:
 
@@ -12,9 +14,10 @@ Implemented:
 - basic memory item store
 - CLI-first status and machine-independent discovery manifests
 - observe snapshot storage and `${MEMSU_HOME:-~/.memsu}/observe/YYYY-MM-DD.md` output
-- V3 user-editable `${MEMSU_HOME:-~/.memsu}/inspire.md` initialization
+- V4 user-editable `${MEMSU_HOME:-~/.memsu}/inspire.md` and `inspire.d/*.md` initialization
 - V3 observation run, evidence reference, and observation finding storage
 - initial `observe agent` planning entrypoint and prompt/toolbelt contract
+- autonomous advancement design for agenda generation and policy-gated next steps
 - rule-based candidate extraction pipeline
 - optional OpenAI-compatible LLM candidate extraction pipeline
 - candidate accept and reject flow

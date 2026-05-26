@@ -92,6 +92,38 @@ privacy preferences, and observation priorities. memSu creates a starter
 template during `init` and never overwrites it unless `memsu inspire init
 --force` is used.
 
+memSu also creates a sibling directory for split inspire notes:
+
+```text
+${MEMSU_HOME:-~/.memsu}/inspire.d/
+```
+
+Use `inspire.d` when the main file starts to become crowded. For example:
+
+- `inspire.d/projects.md` for important project roots and work areas
+- `inspire.d/agents.md` for local agent/tool install state and naming hints
+- `inspire.d/privacy.md` for extra boundaries or low-value paths to skip
+
+During V3 agent-led planning, memSu reads `inspire.md` first, then top-level
+`inspire.d/*.md` files sorted by file name. Files in this directory are still
+user-owned hints, not strict allowlists; the model may inspect other safe local
+metadata when there is a good reason and the authorization level allows it.
+
+V4 inspire notes should describe observation directions instead of hard-coded
+absolute paths. The default split notes include a local signal surface checklist:
+
+- file modification times in common work roots, project roots, downloads,
+  desktop items, and build output areas
+- Git records such as recent log, status, and commit stats
+- Windows Recent `.lnk` metadata
+- PowerShell command history
+- current processes and window titles
+- local agent session indexes, titles, update times, and summaries
+- build/release artifacts such as APKs, zips, protected outputs, market
+  packages, and downloaded assets
+
+The agent should discover concrete paths at run time from local evidence.
+
 ## Evidence Policy
 
 The observer reads high-level metadata only:
