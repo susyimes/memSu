@@ -3,6 +3,7 @@
 ## Current MVP Status
 
 V2 observe-layer planning is tracked in [PLAN_V2.md](PLAN_V2.md).
+V3 agent-led observation planning is tracked in [PLAN_V3.md](PLAN_V3.md).
 
 Implemented:
 

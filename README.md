@@ -271,6 +271,12 @@ python -m memsu observe list
 Observe writes to `${MEMSU_HOME:-~/.memsu}/observe/YYYY-MM-DD.md` and records a
 snapshot row in SQLite. See [docs/observe.md](docs/observe.md).
 
+V3 planning explores an agent-led observe mode where the model chooses safe
+local read-only probes, records evidence, and proposes memory candidates instead
+of relying on a fixed source-reader checklist. V3 also introduces a user-editable
+`${MEMSU_HOME:-~/.memsu}/inspire.md` so the user can describe important local
+directories, tools, and observation preferences. See [PLAN_V3.md](PLAN_V3.md).
+
 Evaluate proactive policy:
 
 ```powershell
