@@ -218,6 +218,10 @@ Initialize storage:
 python -m memsu init
 ```
 
+Initialization creates the SQLite store, policy file, observe directory,
+discovery manifests, and a user-editable V3 inspire file at
+`${MEMSU_HOME:-~/.memsu}/inspire.md`.
+
 Run a smoke test:
 
 ```powershell
@@ -276,6 +280,14 @@ local read-only probes, records evidence, and proposes memory candidates instead
 of relying on a fixed source-reader checklist. V3 also introduces a user-editable
 `${MEMSU_HOME:-~/.memsu}/inspire.md` so the user can describe important local
 directories, tools, and observation preferences. See [PLAN_V3.md](PLAN_V3.md).
+
+V3 helper commands:
+
+```powershell
+python -m memsu inspire path
+python -m memsu inspire show
+python -m memsu observe agent --dry-run-plan
+```
 
 Evaluate proactive policy:
 
@@ -338,6 +350,9 @@ Implemented:
 - scoped memory items
 - CLI-first status and discovery manifests
 - observe snapshots written to `${MEMSU_HOME:-~/.memsu}/observe/YYYY-MM-DD.md`
+- V3 user-editable `${MEMSU_HOME:-~/.memsu}/inspire.md`
+- V3 observation run, evidence reference, and finding tables
+- initial `observe agent` planning entrypoint
 - rule-based and optional OpenAI-compatible LLM candidate extraction from events
 - candidate accept and reject flow
 - possible conflict hints for similar same-scope memories

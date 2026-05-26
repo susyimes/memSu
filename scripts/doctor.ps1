@@ -21,9 +21,17 @@ try {
     if ($LASTEXITCODE -ne 0) {
         throw "memSu status failed"
     }
+    python -m memsu inspire path
+    if ($LASTEXITCODE -ne 0) {
+        throw "memSu inspire path failed"
+    }
     python -m memsu observe doctor
     if ($LASTEXITCODE -ne 0) {
         throw "memSu observe doctor failed"
+    }
+    python -m memsu observe agent --dry-run-plan
+    if ($LASTEXITCODE -ne 0) {
+        throw "memSu observe agent dry-run failed"
     }
     python -m memsu migrate status
     if ($LASTEXITCODE -ne 0) {

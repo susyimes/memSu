@@ -28,6 +28,9 @@ EXPORT_TABLES = [
     "curator_runs",
     "vector_index",
     "observation_snapshots",
+    "observation_runs",
+    "evidence_refs",
+    "observation_findings",
 ]
 
 
@@ -86,8 +89,16 @@ def privacy_scan(store: MemSuStore, *, limit: int = 200) -> dict[str, Any]:
     findings: list[dict[str, Any]] = []
     scan_targets = [
         ("events", "event_id", "content"),
+        ("events", "event_id", "metadata"),
         ("memories", "item_id", "content"),
+        ("memories", "item_id", "metadata"),
         ("memory_candidates", "candidate_id", "content"),
+        ("memory_candidates", "candidate_id", "metadata"),
+        ("observation_runs", "run_id", "metadata"),
+        ("evidence_refs", "evidence_id", "summary"),
+        ("evidence_refs", "evidence_id", "metadata"),
+        ("observation_findings", "finding_id", "claim"),
+        ("observation_findings", "finding_id", "metadata"),
     ]
     with store.session() as conn:
         for table, id_column, text_column in scan_targets:
@@ -102,6 +113,7 @@ def privacy_scan(store: MemSuStore, *, limit: int = 200) -> dict[str, Any]:
                         findings.append(
                             {
                                 "table": table,
+                                "column": text_column,
                                 "id": row["id"],
                                 "kind": kind,
                                 "preview": redact_preview(content),

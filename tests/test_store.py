@@ -121,6 +121,38 @@ class MemSuStoreTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.store.extract_candidates(method="unknown")
 
+    def test_observation_run_evidence_and_findings_are_recorded(self) -> None:
+        run = self.store.record_observation_run(
+            mode="agent",
+            since="24h",
+            authorization_level="metadata",
+            status="planned",
+            prompt="plan prompt",
+            metadata={"toolbelt": ["local_time_context"]},
+        )
+        evidence = self.store.record_evidence_ref(
+            run_id=run["run_id"],
+            source_type="inspire",
+            source_ref="inspire.md",
+            summary="loaded inspire notes",
+        )
+        finding = self.store.record_observation_finding(
+            run_id=run["run_id"],
+            kind="plan",
+            claim="Agent-led observe plan is ready.",
+            confidence=1.0,
+            evidence_ids=[evidence["evidence_id"]],
+        )
+
+        self.assertEqual(run["run_id"], self.store.list_observation_runs()[0]["run_id"])
+        self.assertEqual(evidence["evidence_id"], self.store.list_evidence_refs(run_id=run["run_id"])[0]["evidence_id"])
+        self.assertEqual(finding["finding_id"], self.store.list_observation_findings(run_id=run["run_id"])[0]["finding_id"])
+        self.assertIn(evidence["evidence_id"], finding["evidence_ids"])
+        health = self.store.health()
+        self.assertEqual(1, health["observation_run_count"])
+        self.assertEqual(1, health["evidence_ref_count"])
+        self.assertEqual(1, health["observation_finding_count"])
+
 
 if __name__ == "__main__":
     unittest.main()

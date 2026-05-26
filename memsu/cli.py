@@ -13,6 +13,8 @@ from .adapters import (
     snapshot_git_repo,
 )
 from .discovery import ensure_discovery_files, status_payload
+from .agent_observe import run_agent_observe
+from .inspire import ensure_inspire_files, inspire_status, read_inspire
 from .observe import observe_doctor, run_observe
 from .paths import default_db_path, default_observe_dir, default_policy_path, memsu_home
 from .store import EVENT_TYPES, MEMORY_TYPES, MemSuStore
@@ -50,6 +52,7 @@ def cmd_init(args: argparse.Namespace) -> int:
     store = MemSuStore(args.db)
     store.init()
     ensure_policy_file()
+    inspire = ensure_inspire_files()
     default_observe_dir().mkdir(parents=True, exist_ok=True)
     discovery = ensure_discovery_files()
     print_json(
@@ -58,6 +61,7 @@ def cmd_init(args: argparse.Namespace) -> int:
             "db_path": str(store.db_path),
             "home": str(memsu_home()),
             "observe_dir": str(default_observe_dir()),
+            "inspire": inspire,
             "discovery": discovery,
         }
     )
@@ -69,9 +73,28 @@ def cmd_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_inspire_init(args: argparse.Namespace) -> int:
+    print_json(ensure_inspire_files(overwrite=args.force))
+    return 0
+
+
+def cmd_inspire_path(args: argparse.Namespace) -> int:
+    print_json(inspire_status())
+    return 0
+
+
+def cmd_inspire_show(args: argparse.Namespace) -> int:
+    print_json(read_inspire())
+    return 0
+
+
 def cmd_doctor(args: argparse.Namespace) -> int:
     store = MemSuStore(args.db)
     store.init()
+    ensure_policy_file()
+    ensure_inspire_files()
+    default_observe_dir().mkdir(parents=True, exist_ok=True)
+    ensure_discovery_files()
     event = store.append_event(
         source_agent="doctor",
         source_type="self_test",
@@ -383,6 +406,47 @@ def cmd_observe_doctor(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_observe_runs(args: argparse.Namespace) -> int:
+    result = MemSuStore(args.db).list_observation_runs(
+        status=args.status,
+        limit=args.limit,
+    )
+    print_json({"runs": result})
+    return 0
+
+
+def cmd_observe_evidence(args: argparse.Namespace) -> int:
+    result = MemSuStore(args.db).list_evidence_refs(
+        run_id=args.run_id,
+        limit=args.limit,
+    )
+    print_json({"evidence": result})
+    return 0
+
+
+def cmd_observe_findings(args: argparse.Namespace) -> int:
+    result = MemSuStore(args.db).list_observation_findings(
+        run_id=args.run_id,
+        status=args.status,
+        limit=args.limit,
+    )
+    print_json({"findings": result})
+    return 0
+
+
+def cmd_observe_agent(args: argparse.Namespace) -> int:
+    result = run_agent_observe(
+        MemSuStore(args.db),
+        since=args.since,
+        authorization_level=args.authorization,
+        dry_run_plan=args.dry_run_plan,
+        include_prompt=args.show_prompt,
+        model=args.model,
+    )
+    print_json(result)
+    return 0 if result.get("ok") else 1
+
+
 def cmd_retain(args: argparse.Namespace) -> int:
     metadata = json.loads(args.metadata) if args.metadata else {}
     result = MemSuStore(args.db).retain_memory(
@@ -428,6 +492,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_status = sub.add_parser("status", help="Show CLI-first memSu discovery status")
     p_status.set_defaults(func=cmd_status)
+
+    p_inspire = sub.add_parser("inspire", help="Inspect or initialize user-editable V3 inspire notes")
+    inspire_sub = p_inspire.add_subparsers(dest="inspire_command", required=True)
+    p_inspire_init = inspire_sub.add_parser("init", help="Create the user-editable inspire.md template")
+    p_inspire_init.add_argument("--force", action="store_true", help="Overwrite inspire.md with the default template")
+    p_inspire_init.set_defaults(func=cmd_inspire_init)
+    p_inspire_path = inspire_sub.add_parser("path", help="Show the inspire.md path")
+    p_inspire_path.set_defaults(func=cmd_inspire_path)
+    p_inspire_show = inspire_sub.add_parser("show", help="Show inspire.md content")
+    p_inspire_show.set_defaults(func=cmd_inspire_show)
 
     p_doctor = sub.add_parser("doctor", help="Run a local smoke test")
     p_doctor.set_defaults(func=cmd_doctor)
@@ -617,6 +691,17 @@ def build_parser() -> argparse.ArgumentParser:
     p_observe_run = observe_sub.add_parser("run", help="Append today's high-signal observe snapshot")
     p_observe_run.add_argument("--evidence-home", default="")
     p_observe_run.set_defaults(func=cmd_observe_run)
+    p_observe_agent = observe_sub.add_parser("agent", help="Plan a V3 agent-led observe run")
+    p_observe_agent.add_argument("--since", default="24h")
+    p_observe_agent.add_argument(
+        "--authorization",
+        choices=["metadata", "local-summary", "content-with-approval"],
+        default="metadata",
+    )
+    p_observe_agent.add_argument("--dry-run-plan", action="store_true")
+    p_observe_agent.add_argument("--show-prompt", action="store_true")
+    p_observe_agent.add_argument("--model", default="")
+    p_observe_agent.set_defaults(func=cmd_observe_agent)
     p_observe_list = observe_sub.add_parser("list", help="List observation snapshots")
     p_observe_list.add_argument("--date", default="")
     p_observe_list.add_argument("--limit", type=int, default=20)
@@ -626,6 +711,19 @@ def build_parser() -> argparse.ArgumentParser:
     p_observe_show.set_defaults(func=cmd_observe_show)
     p_observe_doctor = observe_sub.add_parser("doctor", help="Check observe readiness")
     p_observe_doctor.set_defaults(func=cmd_observe_doctor)
+    p_observe_runs = observe_sub.add_parser("runs", help="List V3 observation runs")
+    p_observe_runs.add_argument("--status", default="")
+    p_observe_runs.add_argument("--limit", type=int, default=20)
+    p_observe_runs.set_defaults(func=cmd_observe_runs)
+    p_observe_evidence = observe_sub.add_parser("evidence", help="List V3 evidence refs")
+    p_observe_evidence.add_argument("--run-id", default="")
+    p_observe_evidence.add_argument("--limit", type=int, default=50)
+    p_observe_evidence.set_defaults(func=cmd_observe_evidence)
+    p_observe_findings = observe_sub.add_parser("findings", help="List V3 observation findings")
+    p_observe_findings.add_argument("--run-id", default="")
+    p_observe_findings.add_argument("--status", default="")
+    p_observe_findings.add_argument("--limit", type=int, default=50)
+    p_observe_findings.set_defaults(func=cmd_observe_findings)
 
     p_retain = sub.add_parser("retain", help="Retain a memory item")
     p_retain.add_argument("content")

@@ -40,7 +40,7 @@ MEMORY_TYPES = {
 
 ACTIVE_STATUS = "active"
 PENDING_CANDIDATE_STATUS = "pending"
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 
 def utc_now() -> str:
@@ -325,6 +325,59 @@ class MemSuStore:
 
                 CREATE INDEX IF NOT EXISTS idx_observation_snapshots_date
                     ON observation_snapshots(local_date, local_time);
+
+                CREATE TABLE IF NOT EXISTS observation_runs (
+                    run_id TEXT PRIMARY KEY,
+                    mode TEXT NOT NULL,
+                    since TEXT NOT NULL DEFAULT '',
+                    authorization_level TEXT NOT NULL DEFAULT 'metadata',
+                    started_at TEXT NOT NULL,
+                    finished_at TEXT NOT NULL DEFAULT '',
+                    status TEXT NOT NULL,
+                    model TEXT NOT NULL DEFAULT '',
+                    prompt_hash TEXT NOT NULL DEFAULT '',
+                    tool_call_count INTEGER NOT NULL DEFAULT 0,
+                    result_ref TEXT NOT NULL DEFAULT '',
+                    metadata TEXT NOT NULL DEFAULT '{}'
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_observation_runs_started
+                    ON observation_runs(started_at);
+                CREATE INDEX IF NOT EXISTS idx_observation_runs_status
+                    ON observation_runs(status, started_at);
+
+                CREATE TABLE IF NOT EXISTS evidence_refs (
+                    evidence_id TEXT PRIMARY KEY,
+                    run_id TEXT NOT NULL,
+                    source_type TEXT NOT NULL,
+                    source_ref TEXT NOT NULL DEFAULT '',
+                    source_hash TEXT NOT NULL,
+                    observed_at TEXT NOT NULL,
+                    sensitivity TEXT NOT NULL DEFAULT 'normal',
+                    summary TEXT NOT NULL DEFAULT '',
+                    metadata TEXT NOT NULL DEFAULT '{}'
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_evidence_refs_run
+                    ON evidence_refs(run_id, observed_at);
+                CREATE INDEX IF NOT EXISTS idx_evidence_refs_hash
+                    ON evidence_refs(source_hash);
+
+                CREATE TABLE IF NOT EXISTS observation_findings (
+                    finding_id TEXT PRIMARY KEY,
+                    run_id TEXT NOT NULL,
+                    kind TEXT NOT NULL,
+                    scope TEXT NOT NULL DEFAULT '',
+                    claim TEXT NOT NULL,
+                    confidence REAL NOT NULL DEFAULT 0.5,
+                    evidence_ids TEXT NOT NULL DEFAULT '[]',
+                    status TEXT NOT NULL DEFAULT 'open',
+                    created_at TEXT NOT NULL,
+                    metadata TEXT NOT NULL DEFAULT '{}'
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_observation_findings_run
+                    ON observation_findings(run_id, status);
 
                 CREATE TABLE IF NOT EXISTS schema_migrations (
                     version INTEGER PRIMARY KEY,
@@ -1048,6 +1101,292 @@ class MemSuStore:
             ).fetchone()
         return self._observation_snapshot_row_to_dict(row) if row else None
 
+    def record_observation_run(
+        self,
+        *,
+        mode: str,
+        since: str = "",
+        authorization_level: str = "metadata",
+        status: str = "started",
+        model: str = "",
+        prompt: str = "",
+        tool_call_count: int = 0,
+        result_ref: str = "",
+        metadata: dict[str, Any] | None = None,
+        finished_at: str = "",
+    ) -> dict[str, Any]:
+        self.init()
+        run_id = f"run_{uuid.uuid4().hex}"
+        now = utc_now()
+        prompt_hash = stable_hash(prompt) if prompt else ""
+        with self.session() as conn:
+            conn.execute(
+                """
+                INSERT INTO observation_runs (
+                    run_id, mode, since, authorization_level, started_at,
+                    finished_at, status, model, prompt_hash, tool_call_count,
+                    result_ref, metadata
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    run_id,
+                    mode,
+                    since,
+                    authorization_level,
+                    now,
+                    finished_at,
+                    status,
+                    model,
+                    prompt_hash,
+                    int(tool_call_count),
+                    result_ref,
+                    json_dumps(metadata),
+                ),
+            )
+        run = self.get_observation_run(run_id)
+        if run is None:
+            raise RuntimeError("failed to read observation run after insert")
+        return run
+
+    def update_observation_run(
+        self,
+        run_id: str,
+        *,
+        status: str,
+        result_ref: str = "",
+        tool_call_count: int | None = None,
+        metadata: dict[str, Any] | None = None,
+        finished: bool = True,
+    ) -> dict[str, Any]:
+        self.init()
+        updates = ["status = ?"]
+        values: list[Any] = [status]
+        if result_ref:
+            updates.append("result_ref = ?")
+            values.append(result_ref)
+        if tool_call_count is not None:
+            updates.append("tool_call_count = ?")
+            values.append(int(tool_call_count))
+        if metadata is not None:
+            updates.append("metadata = ?")
+            values.append(json_dumps(metadata))
+        if finished:
+            updates.append("finished_at = ?")
+            values.append(utc_now())
+        values.append(run_id)
+        with self.session() as conn:
+            conn.execute(
+                f"UPDATE observation_runs SET {', '.join(updates)} WHERE run_id = ?",
+                values,
+            )
+        run = self.get_observation_run(run_id)
+        if run is None:
+            return {"run_id": run_id, "status": "not_found"}
+        return run
+
+    def get_observation_run(self, run_id: str) -> dict[str, Any] | None:
+        self.init()
+        with self.session() as conn:
+            row = conn.execute(
+                "SELECT * FROM observation_runs WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
+        return self._observation_run_row_to_dict(row) if row else None
+
+    def list_observation_runs(
+        self,
+        *,
+        status: str = "",
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        self.init()
+        with self.session() as conn:
+            if status:
+                rows = conn.execute(
+                    """
+                    SELECT *
+                    FROM observation_runs
+                    WHERE status = ?
+                    ORDER BY started_at DESC
+                    LIMIT ?
+                    """,
+                    (status, limit),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT *
+                    FROM observation_runs
+                    ORDER BY started_at DESC
+                    LIMIT ?
+                    """,
+                    (limit,),
+                ).fetchall()
+        return [self._observation_run_row_to_dict(row) for row in rows]
+
+    def record_evidence_ref(
+        self,
+        *,
+        run_id: str,
+        source_type: str,
+        source_ref: str = "",
+        summary: str = "",
+        sensitivity: str = "normal",
+        source_hash: str = "",
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        self.init()
+        evidence_id = f"evd_{uuid.uuid4().hex}"
+        source_hash = source_hash or stable_hash(run_id, source_type, source_ref, summary)
+        now = utc_now()
+        with self.session() as conn:
+            conn.execute(
+                """
+                INSERT INTO evidence_refs (
+                    evidence_id, run_id, source_type, source_ref, source_hash,
+                    observed_at, sensitivity, summary, metadata
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    evidence_id,
+                    run_id,
+                    source_type,
+                    source_ref,
+                    source_hash,
+                    now,
+                    sensitivity,
+                    summary,
+                    json_dumps(metadata),
+                ),
+            )
+        evidence = self.get_evidence_ref(evidence_id)
+        if evidence is None:
+            raise RuntimeError("failed to read evidence after insert")
+        return evidence
+
+    def get_evidence_ref(self, evidence_id: str) -> dict[str, Any] | None:
+        self.init()
+        with self.session() as conn:
+            row = conn.execute(
+                "SELECT * FROM evidence_refs WHERE evidence_id = ?",
+                (evidence_id,),
+            ).fetchone()
+        return self._evidence_ref_row_to_dict(row) if row else None
+
+    def list_evidence_refs(
+        self,
+        *,
+        run_id: str = "",
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        self.init()
+        with self.session() as conn:
+            if run_id:
+                rows = conn.execute(
+                    """
+                    SELECT *
+                    FROM evidence_refs
+                    WHERE run_id = ?
+                    ORDER BY observed_at DESC
+                    LIMIT ?
+                    """,
+                    (run_id, limit),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT *
+                    FROM evidence_refs
+                    ORDER BY observed_at DESC
+                    LIMIT ?
+                    """,
+                    (limit,),
+                ).fetchall()
+        return [self._evidence_ref_row_to_dict(row) for row in rows]
+
+    def record_observation_finding(
+        self,
+        *,
+        run_id: str,
+        kind: str,
+        claim: str,
+        scope: str = "",
+        confidence: float = 0.5,
+        evidence_ids: Iterable[str] | None = None,
+        status: str = "open",
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        self.init()
+        if not claim.strip():
+            raise ValueError("finding claim cannot be empty")
+        finding_id = f"find_{uuid.uuid4().hex}"
+        now = utc_now()
+        with self.session() as conn:
+            conn.execute(
+                """
+                INSERT INTO observation_findings (
+                    finding_id, run_id, kind, scope, claim, confidence,
+                    evidence_ids, status, created_at, metadata
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    finding_id,
+                    run_id,
+                    kind,
+                    scope,
+                    claim.strip(),
+                    float(confidence),
+                    json_dumps(list(evidence_ids or [])),
+                    status,
+                    now,
+                    json_dumps(metadata),
+                ),
+            )
+        finding = self.get_observation_finding(finding_id)
+        if finding is None:
+            raise RuntimeError("failed to read finding after insert")
+        return finding
+
+    def get_observation_finding(self, finding_id: str) -> dict[str, Any] | None:
+        self.init()
+        with self.session() as conn:
+            row = conn.execute(
+                "SELECT * FROM observation_findings WHERE finding_id = ?",
+                (finding_id,),
+            ).fetchone()
+        return self._observation_finding_row_to_dict(row) if row else None
+
+    def list_observation_findings(
+        self,
+        *,
+        run_id: str = "",
+        status: str = "",
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        self.init()
+        clauses: list[str] = []
+        values: list[Any] = []
+        if run_id:
+            clauses.append("run_id = ?")
+            values.append(run_id)
+        if status:
+            clauses.append("status = ?")
+            values.append(status)
+        where = " WHERE " + " AND ".join(clauses) if clauses else ""
+        values.append(limit)
+        with self.session() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT *
+                FROM observation_findings
+                {where}
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                values,
+            ).fetchall()
+        return [self._observation_finding_row_to_dict(row) for row in rows]
+
     def migration_status(self) -> dict[str, Any]:
         self.init()
         with self.session() as conn:
@@ -1261,6 +1600,15 @@ class MemSuStore:
             observation_count = conn.execute(
                 "SELECT COUNT(*) FROM observation_snapshots"
             ).fetchone()[0]
+            observation_run_count = conn.execute(
+                "SELECT COUNT(*) FROM observation_runs"
+            ).fetchone()[0]
+            evidence_count = conn.execute(
+                "SELECT COUNT(*) FROM evidence_refs"
+            ).fetchone()[0]
+            finding_count = conn.execute(
+                "SELECT COUNT(*) FROM observation_findings"
+            ).fetchone()[0]
         return {
             "ok": True,
             "db_path": str(self.db_path),
@@ -1272,6 +1620,9 @@ class MemSuStore:
             "open_conflict_count": open_conflict_count,
             "vector_index_count": vector_count,
             "observation_snapshot_count": observation_count,
+            "observation_run_count": observation_run_count,
+            "evidence_ref_count": evidence_count,
+            "observation_finding_count": finding_count,
         }
 
     def _event_row_to_dict(self, row: sqlite3.Row) -> dict[str, Any]:
@@ -1483,6 +1834,49 @@ class MemSuStore:
             "started_at": row["started_at"],
             "finished_at": row["finished_at"],
             "result": json_loads(row["result"], {}),
+            "metadata": json_loads(row["metadata"], {}),
+        }
+
+    def _observation_run_row_to_dict(self, row: sqlite3.Row) -> dict[str, Any]:
+        return {
+            "run_id": row["run_id"],
+            "mode": row["mode"],
+            "since": row["since"],
+            "authorization_level": row["authorization_level"],
+            "started_at": row["started_at"],
+            "finished_at": row["finished_at"],
+            "status": row["status"],
+            "model": row["model"],
+            "prompt_hash": row["prompt_hash"],
+            "tool_call_count": row["tool_call_count"],
+            "result_ref": row["result_ref"],
+            "metadata": json_loads(row["metadata"], {}),
+        }
+
+    def _evidence_ref_row_to_dict(self, row: sqlite3.Row) -> dict[str, Any]:
+        return {
+            "evidence_id": row["evidence_id"],
+            "run_id": row["run_id"],
+            "source_type": row["source_type"],
+            "source_ref": row["source_ref"],
+            "source_hash": row["source_hash"],
+            "observed_at": row["observed_at"],
+            "sensitivity": row["sensitivity"],
+            "summary": row["summary"],
+            "metadata": json_loads(row["metadata"], {}),
+        }
+
+    def _observation_finding_row_to_dict(self, row: sqlite3.Row) -> dict[str, Any]:
+        return {
+            "finding_id": row["finding_id"],
+            "run_id": row["run_id"],
+            "kind": row["kind"],
+            "scope": row["scope"],
+            "claim": row["claim"],
+            "confidence": row["confidence"],
+            "evidence_ids": json_loads(row["evidence_ids"], []),
+            "status": row["status"],
+            "created_at": row["created_at"],
             "metadata": json_loads(row["metadata"], {}),
         }
 

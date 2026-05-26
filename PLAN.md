@@ -12,6 +12,9 @@ Implemented:
 - basic memory item store
 - CLI-first status and machine-independent discovery manifests
 - observe snapshot storage and `${MEMSU_HOME:-~/.memsu}/observe/YYYY-MM-DD.md` output
+- V3 user-editable `${MEMSU_HOME:-~/.memsu}/inspire.md` initialization
+- V3 observation run, evidence reference, and observation finding storage
+- initial `observe agent` planning entrypoint and prompt/toolbelt contract
 - rule-based candidate extraction pipeline
 - optional OpenAI-compatible LLM candidate extraction pipeline
 - candidate accept and reject flow

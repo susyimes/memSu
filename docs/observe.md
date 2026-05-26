@@ -11,6 +11,26 @@ Run a snapshot:
 python -m memsu observe run
 ```
 
+Create a V3 agent-led observe plan without executing local probes:
+
+```powershell
+python -m memsu observe agent --dry-run-plan
+```
+
+Add `--show-prompt` only when you explicitly want the generated prompt printed;
+by default the prompt is recorded by hash so user-owned `inspire.md` content does
+not spill into routine logs.
+
+Run the V3 agent planning path with an OpenAI-compatible model endpoint:
+
+```powershell
+$env:MEMSU_LLM_ENDPOINT = "http://127.0.0.1:11434/v1/chat/completions"
+python -m memsu observe agent --since 24h --authorization metadata
+```
+
+The model prompt includes `inspire.md`, so point `MEMSU_LLM_ENDPOINT` only at a
+local or otherwise trusted endpoint.
+
 List snapshots:
 
 ```powershell
@@ -30,6 +50,22 @@ Check readiness:
 python -m memsu observe doctor
 ```
 
+Inspect V3 observation audit records:
+
+```powershell
+python -m memsu observe runs
+python -m memsu observe evidence --run-id <run_id>
+python -m memsu observe findings --run-id <run_id>
+```
+
+Inspect or initialize the user-editable V3 inspire file:
+
+```powershell
+python -m memsu inspire path
+python -m memsu inspire show
+python -m memsu inspire init
+```
+
 ## Output
 
 Snapshots are appended to:
@@ -40,6 +76,21 @@ ${MEMSU_HOME:-~/.memsu}/observe/YYYY-MM-DD.md
 
 Each run also writes one row to `observation_snapshots` and one compact
 `observation_snapshot` event to the event log.
+
+V3 agent-led observe planning records rows in `observation_runs`,
+`evidence_refs`, and `observation_findings`. Long-term memory still goes through
+review-first candidates.
+
+The V3 inspire file is user-owned:
+
+```text
+${MEMSU_HOME:-~/.memsu}/inspire.md
+```
+
+Users can edit it directly to name important project directories, tools,
+privacy preferences, and observation priorities. memSu creates a starter
+template during `init` and never overwrites it unless `memsu inspire init
+--force` is used.
 
 ## Evidence Policy
 

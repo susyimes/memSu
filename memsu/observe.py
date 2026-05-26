@@ -10,6 +10,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from .paths import default_observe_dir
+from .inspire import inspire_status
 from .store import MemSuStore
 
 
@@ -87,6 +88,7 @@ def observe_doctor(store: MemSuStore | None = None) -> dict[str, Any]:
         "mode": "cli-first",
         "service_required": False,
         "observe_dir": str(observe_dir),
+        "inspire": inspire_status(),
         "db_path": str(store.db_path),
         "schema_version": health["schema_version"],
     }

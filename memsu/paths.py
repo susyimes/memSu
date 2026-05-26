@@ -23,6 +23,14 @@ def default_observe_dir() -> Path:
     return memsu_home() / "observe"
 
 
+def default_inspire_path() -> Path:
+    return memsu_home() / "inspire.md"
+
+
+def default_inspire_dir() -> Path:
+    return memsu_home() / "inspire.d"
+
+
 def default_install_marker_path() -> Path:
     return memsu_home() / "install.json"
 

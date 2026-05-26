@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from memsu.discovery import capabilities_manifest, ensure_discovery_files, status_payload
+from memsu.inspire import ensure_inspire_files
 from memsu.store import MemSuStore
 
 
@@ -35,6 +36,7 @@ class DiscoveryTests(unittest.TestCase):
         store = MemSuStore(self.root / "memsu.db")
         store.init()
         files = ensure_discovery_files()
+        inspire = ensure_inspire_files()
 
         status = status_payload(store)
 
@@ -42,8 +44,11 @@ class DiscoveryTests(unittest.TestCase):
         self.assertTrue(status["initialized"])
         self.assertEqual("cli-first", status["mode"])
         self.assertTrue(Path(files["install_marker"]).exists())
+        self.assertTrue(Path(inspire["inspire_path"]).exists())
         self.assertEqual(str(self.root), status["resolved_paths"]["home"])
+        self.assertEqual(str(self.root / "inspire.md"), status["resolved_paths"]["inspire"])
         self.assertEqual("${MEMSU_HOME:-~/.memsu}", status["manifest_templates"]["home"])
+        self.assertEqual("${MEMSU_HOME:-~/.memsu}/inspire.md", status["manifest_templates"]["inspire"])
 
 
 if __name__ == "__main__":

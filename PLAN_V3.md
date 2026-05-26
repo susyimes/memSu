@@ -405,12 +405,12 @@ They should not share a rigid source list.
 
 ### V3.0 Design and Prompt Contract
 
-- document agent-led observe plan
-- define default user-editable `inspire.md`
-- expose `inspire.md` path through CLI/status
-- define observation-agent system prompt
-- define toolbelt contracts and JSON result schemas
-- define authorization levels
+- document agent-led observe plan (implemented)
+- define default user-editable `inspire.md` (implemented)
+- expose `inspire.md` path through CLI/status (implemented)
+- define observation-agent system prompt (initial prompt implemented)
+- define toolbelt contracts and JSON result schemas (initial contract implemented)
+- define authorization levels (implemented in CLI)
 
 Success check:
 
@@ -419,11 +419,13 @@ Success check:
 
 ### V3.1 Evidence Ledger
 
-- add `observation_runs`
-- add `evidence_refs`
-- add `observation_findings`
-- record source hashes and skipped sensitive sources
-- export one run as JSON
+- add `observation_runs` (implemented)
+- add `evidence_refs` (implemented)
+- add `observation_findings` (implemented)
+- record source hashes and skipped sensitive sources (source hashes implemented;
+  skipped-source evidence is planned for probe execution)
+- export one run as JSON (available through database export; dedicated run
+  export remains planned)
 
 Success check:
 

@@ -51,6 +51,30 @@ class HardeningTests(unittest.TestCase):
         self.assertIn("[REDACTED]", previews)
         self.assertIn("[EMAIL]", previews)
 
+    def test_privacy_scan_includes_v3_observation_tables(self) -> None:
+        run = self.store.record_observation_run(
+            mode="agent",
+            status="planned",
+            metadata={"model_plan": "password=super-secret-value"},
+        )
+        self.store.record_evidence_ref(
+            run_id=run["run_id"],
+            source_type="probe",
+            summary="token=temporary-value",
+        )
+        self.store.record_observation_finding(
+            run_id=run["run_id"],
+            kind="fact",
+            claim="contact user@example.com",
+        )
+
+        result = privacy_scan(self.store)
+
+        scanned = {(item["table"], item["column"]) for item in result["findings"]}
+        self.assertIn(("observation_runs", "metadata"), scanned)
+        self.assertIn(("evidence_refs", "summary"), scanned)
+        self.assertIn(("observation_findings", "claim"), scanned)
+
     def test_vector_index_recall(self) -> None:
         self.store.retain_memory(
             "sparse vector backend ranks local memory",

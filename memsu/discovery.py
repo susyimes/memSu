@@ -9,6 +9,8 @@ from . import __version__
 from .paths import (
     default_capabilities_path,
     default_db_path,
+    default_inspire_dir,
+    default_inspire_path,
     default_install_marker_path,
     default_observe_dir,
     default_policy_path,
@@ -52,6 +54,10 @@ def capabilities_manifest() -> dict[str, Any]:
             "retain": f"{ENTRYPOINT} retain",
             "event_append": f"{ENTRYPOINT} event append",
             "observe_run": f"{ENTRYPOINT} observe run",
+            "observe_agent": f"{ENTRYPOINT} observe agent",
+            "inspire_path": f"{ENTRYPOINT} inspire path",
+            "inspire_show": f"{ENTRYPOINT} inspire show",
+            "inspire_init": f"{ENTRYPOINT} inspire init",
             "candidate_list": f"{ENTRYPOINT} candidate list",
             "curator_run": f"{ENTRYPOINT} curator run",
             "policy_evaluate": f"{ENTRYPOINT} policy evaluate",
@@ -60,6 +66,8 @@ def capabilities_manifest() -> dict[str, Any]:
             "home": PLACEHOLDER_HOME,
             "db": f"{PLACEHOLDER_HOME}/memsu.db",
             "observe_dir": f"{PLACEHOLDER_HOME}/observe",
+            "inspire": f"{PLACEHOLDER_HOME}/inspire.md",
+            "inspire_dir": f"{PLACEHOLDER_HOME}/inspire.d",
             "policy": f"{PLACEHOLDER_HOME}/policy.yaml",
             "capabilities": f"{PLACEHOLDER_HOME}/capabilities.json",
             "install_marker": f"{PLACEHOLDER_HOME}/install.json",
@@ -88,6 +96,8 @@ def status_payload(store: MemSuStore | None = None) -> dict[str, Any]:
     capabilities_path = default_capabilities_path()
     policy_path = default_policy_path()
     observe_dir = default_observe_dir()
+    inspire_path = default_inspire_path()
+    inspire_dir = default_inspire_dir()
     schema_version = read_schema_version(db_path) if initialized else None
 
     return {
@@ -102,6 +112,8 @@ def status_payload(store: MemSuStore | None = None) -> dict[str, Any]:
             "home": PLACEHOLDER_HOME,
             "db": f"{PLACEHOLDER_HOME}/memsu.db",
             "observe_dir": f"{PLACEHOLDER_HOME}/observe",
+            "inspire": f"{PLACEHOLDER_HOME}/inspire.md",
+            "inspire_dir": f"{PLACEHOLDER_HOME}/inspire.d",
             "policy": f"{PLACEHOLDER_HOME}/policy.yaml",
             "capabilities": f"{PLACEHOLDER_HOME}/capabilities.json",
             "install_marker": f"{PLACEHOLDER_HOME}/install.json",
@@ -110,6 +122,8 @@ def status_payload(store: MemSuStore | None = None) -> dict[str, Any]:
             "home": str(memsu_home()),
             "db": str(db_path),
             "observe_dir": str(observe_dir),
+            "inspire": str(inspire_path),
+            "inspire_dir": str(inspire_dir),
             "policy": str(policy_path),
             "capabilities": str(capabilities_path),
             "install_marker": str(marker_path),
@@ -117,6 +131,8 @@ def status_payload(store: MemSuStore | None = None) -> dict[str, Any]:
         "files": {
             "db": db_path.exists(),
             "policy": policy_path.exists(),
+            "inspire": inspire_path.exists(),
+            "inspire_dir": inspire_dir.exists(),
             "capabilities": capabilities_path.exists(),
             "install_marker": marker_path.exists(),
             "observe_dir": observe_dir.exists(),
