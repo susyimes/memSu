@@ -55,6 +55,8 @@ def capabilities_manifest() -> dict[str, Any]:
             "event_append": f"{ENTRYPOINT} event append",
             "observe_run": f"{ENTRYPOINT} observe run",
             "observe_agent": f"{ENTRYPOINT} observe agent",
+            "advance_agenda": f"{ENTRYPOINT} advance agenda",
+            "advance_run": f"{ENTRYPOINT} advance run --skill observe-to-proposals",
             "inspire_path": f"{ENTRYPOINT} inspire path",
             "inspire_show": f"{ENTRYPOINT} inspire show",
             "inspire_init": f"{ENTRYPOINT} inspire init",

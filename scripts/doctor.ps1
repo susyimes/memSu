@@ -42,10 +42,12 @@ try {
         throw "memSu privacy scan failed"
     }
 
-    $skillPath = Join-Path $HermesHome "skills\memory-capture\SKILL.md"
+    $memoryCaptureSkillPath = Join-Path $HermesHome "skills\memory-capture\SKILL.md"
+    $observeToProposalsSkillPath = Join-Path $HermesHome "skills\observe-to-proposals\SKILL.md"
 
     Write-Output "Hermes home: $HermesHome"
-    Write-Output "Skills installed: $(Test-Path -LiteralPath $skillPath)"
+    Write-Output "memory-capture skill installed: $(Test-Path -LiteralPath $memoryCaptureSkillPath)"
+    Write-Output "observe-to-proposals skill installed: $(Test-Path -LiteralPath $observeToProposalsSkillPath)"
 }
 finally {
     Pop-Location

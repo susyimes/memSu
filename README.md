@@ -198,10 +198,18 @@ The next layer is an advancement agent that uses memSu's existing observations,
 findings, memories, pending candidates, and policy engine to keep local work
 moving without taking unsafe control of the machine.
 
-It should detect active work lines, rank evidence-backed next-step
-opportunities, run only L0/L1 maintenance automatically, record L2 suggestions,
-and create L3 action proposals for user confirmation. Observation answers "what
-can be seen"; advancement answers "what should happen next, within policy".
+The design is skill/adapter-controlled. Adapters produce structured events,
+evidence, and findings from stable signal sources. Skills orchestrate repeatable
+workflows such as "observe -> proposals". The auto kernel should only choose
+which skill or adapter to call, rank evidence-backed opportunities, run policy
+checks, and record outcomes.
+
+The first reference skill is `observe-to-proposals`: run or read memSu observe,
+summarize active work lines, produce L2 suggestions, and create L3 action
+proposals without editing files, sending messages, or accepting memory.
+Observation answers "what can be seen"; advancement answers "what should happen
+next, within policy"; skills and adapters answer "how this capability is safely
+performed".
 
 See [PLAN_AUTO.md](PLAN_AUTO.md).
 
@@ -287,6 +295,18 @@ python -m memsu observe list
 
 Observe writes to `${MEMSU_HOME:-~/.memsu}/observe/YYYY-MM-DD.md` and records a
 snapshot row in SQLite. See [docs/observe.md](docs/observe.md).
+
+Run the skill/adapter-controlled advancement MVP:
+
+```powershell
+python -m memsu advance agenda
+python -m memsu advance run --skill observe-to-proposals --dry-run
+python -m memsu advance run --skill observe-to-proposals
+```
+
+Advance reads existing observations, findings, candidates, conflicts, summaries,
+and events, then produces policy-gated suggestions. See
+[docs/advance.md](docs/advance.md).
 
 V3 planning explores an agent-led observe mode where the model chooses safe
 local read-only probes, records evidence, and proposes memory candidates instead
@@ -385,6 +405,7 @@ Implemented:
 - V3 user-editable `${MEMSU_HOME:-~/.memsu}/inspire.md` and `inspire.d/*.md`
 - V3 observation run, evidence reference, and finding tables
 - initial `observe agent` planning entrypoint
+- initial `advance agenda` and `advance run --skill observe-to-proposals`
 - rule-based and optional OpenAI-compatible LLM candidate extraction from events
 - candidate accept and reject flow
 - possible conflict hints for similar same-scope memories
