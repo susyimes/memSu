@@ -40,7 +40,7 @@ MEMORY_TYPES = {
 
 ACTIVE_STATUS = "active"
 PENDING_CANDIDATE_STATUS = "pending"
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 
 def utc_now() -> str:
@@ -378,6 +378,64 @@ class MemSuStore:
 
                 CREATE INDEX IF NOT EXISTS idx_observation_findings_run
                     ON observation_findings(run_id, status);
+
+                CREATE TABLE IF NOT EXISTS advancement_runs (
+                    run_id TEXT PRIMARY KEY,
+                    since TEXT NOT NULL DEFAULT '',
+                    mode TEXT NOT NULL,
+                    started_at TEXT NOT NULL,
+                    finished_at TEXT NOT NULL DEFAULT '',
+                    status TEXT NOT NULL,
+                    policy_summary_json TEXT NOT NULL DEFAULT '{}',
+                    capability_calls_json TEXT NOT NULL DEFAULT '[]',
+                    metadata TEXT NOT NULL DEFAULT '{}'
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_advancement_runs_started
+                    ON advancement_runs(started_at);
+                CREATE INDEX IF NOT EXISTS idx_advancement_runs_status
+                    ON advancement_runs(status, started_at);
+
+                CREATE TABLE IF NOT EXISTS worklines (
+                    workline_id TEXT PRIMARY KEY,
+                    run_id TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    scope TEXT NOT NULL DEFAULT '',
+                    status TEXT NOT NULL DEFAULT 'open',
+                    confidence REAL NOT NULL DEFAULT 0.5,
+                    evidence_ids_json TEXT NOT NULL DEFAULT '[]',
+                    source_snapshot_ids_json TEXT NOT NULL DEFAULT '[]',
+                    summary TEXT NOT NULL DEFAULT '',
+                    metadata TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_worklines_run
+                    ON worklines(run_id, status);
+                CREATE INDEX IF NOT EXISTS idx_worklines_scope
+                    ON worklines(scope, status);
+
+                CREATE TABLE IF NOT EXISTS advancement_opportunities (
+                    opportunity_id TEXT PRIMARY KEY,
+                    run_id TEXT NOT NULL,
+                    workline_id TEXT NOT NULL DEFAULT '',
+                    kind TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    description TEXT NOT NULL DEFAULT '',
+                    risk_level TEXT NOT NULL DEFAULT 'L2',
+                    policy_decision TEXT NOT NULL DEFAULT '',
+                    status TEXT NOT NULL DEFAULT 'open',
+                    evidence_ids_json TEXT NOT NULL DEFAULT '[]',
+                    proposal_id TEXT NOT NULL DEFAULT '',
+                    capability_name TEXT NOT NULL DEFAULT '',
+                    metadata TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_advancement_opportunities_run
+                    ON advancement_opportunities(run_id, status);
+                CREATE INDEX IF NOT EXISTS idx_advancement_opportunities_status
+                    ON advancement_opportunities(status, created_at);
 
                 CREATE TABLE IF NOT EXISTS schema_migrations (
                     version INTEGER PRIMARY KEY,
@@ -1387,6 +1445,308 @@ class MemSuStore:
             ).fetchall()
         return [self._observation_finding_row_to_dict(row) for row in rows]
 
+    def record_advancement_run(
+        self,
+        *,
+        mode: str,
+        since: str = "",
+        status: str = "started",
+        policy_summary: dict[str, Any] | None = None,
+        capability_calls: Iterable[dict[str, Any]] | None = None,
+        metadata: dict[str, Any] | None = None,
+        finished_at: str = "",
+    ) -> dict[str, Any]:
+        self.init()
+        run_id = f"adv_{uuid.uuid4().hex}"
+        now = utc_now()
+        with self.session() as conn:
+            conn.execute(
+                """
+                INSERT INTO advancement_runs (
+                    run_id, since, mode, started_at, finished_at, status,
+                    policy_summary_json, capability_calls_json, metadata
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    run_id,
+                    since,
+                    mode,
+                    now,
+                    finished_at,
+                    status,
+                    json_dumps(policy_summary),
+                    json_dumps(list(capability_calls or [])),
+                    json_dumps(metadata),
+                ),
+            )
+        run = self.get_advancement_run(run_id)
+        if run is None:
+            raise RuntimeError("failed to read advancement run after insert")
+        return run
+
+    def update_advancement_run(
+        self,
+        run_id: str,
+        *,
+        status: str,
+        policy_summary: dict[str, Any] | None = None,
+        capability_calls: Iterable[dict[str, Any]] | None = None,
+        metadata: dict[str, Any] | None = None,
+        finished: bool = True,
+    ) -> dict[str, Any]:
+        self.init()
+        updates = ["status = ?"]
+        values: list[Any] = [status]
+        if policy_summary is not None:
+            updates.append("policy_summary_json = ?")
+            values.append(json_dumps(policy_summary))
+        if capability_calls is not None:
+            updates.append("capability_calls_json = ?")
+            values.append(json_dumps(list(capability_calls)))
+        if metadata is not None:
+            updates.append("metadata = ?")
+            values.append(json_dumps(metadata))
+        if finished:
+            updates.append("finished_at = ?")
+            values.append(utc_now())
+        values.append(run_id)
+        with self.session() as conn:
+            conn.execute(
+                f"UPDATE advancement_runs SET {', '.join(updates)} WHERE run_id = ?",
+                values,
+            )
+        run = self.get_advancement_run(run_id)
+        if run is None:
+            return {"run_id": run_id, "status": "not_found"}
+        return run
+
+    def get_advancement_run(self, run_id: str) -> dict[str, Any] | None:
+        self.init()
+        with self.session() as conn:
+            row = conn.execute(
+                "SELECT * FROM advancement_runs WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
+        return self._advancement_run_row_to_dict(row) if row else None
+
+    def list_advancement_runs(
+        self,
+        *,
+        status: str = "",
+        mode: str = "",
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        self.init()
+        clauses: list[str] = []
+        values: list[Any] = []
+        if status:
+            clauses.append("status = ?")
+            values.append(status)
+        if mode:
+            clauses.append("mode = ?")
+            values.append(mode)
+        where = " WHERE " + " AND ".join(clauses) if clauses else ""
+        values.append(limit)
+        with self.session() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT *
+                FROM advancement_runs
+                {where}
+                ORDER BY started_at DESC
+                LIMIT ?
+                """,
+                values,
+            ).fetchall()
+        return [self._advancement_run_row_to_dict(row) for row in rows]
+
+    def record_workline(
+        self,
+        *,
+        run_id: str,
+        title: str,
+        scope: str = "",
+        status: str = "open",
+        confidence: float = 0.5,
+        evidence_ids: Iterable[str] | None = None,
+        source_snapshot_ids: Iterable[str] | None = None,
+        summary: str = "",
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        self.init()
+        if not title.strip():
+            raise ValueError("workline title cannot be empty")
+        workline_id = f"wl_{uuid.uuid4().hex}"
+        now = utc_now()
+        with self.session() as conn:
+            conn.execute(
+                """
+                INSERT INTO worklines (
+                    workline_id, run_id, title, scope, status, confidence,
+                    evidence_ids_json, source_snapshot_ids_json, summary,
+                    metadata, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    workline_id,
+                    run_id,
+                    title.strip(),
+                    scope,
+                    status,
+                    float(confidence),
+                    json_dumps(list(evidence_ids or [])),
+                    json_dumps(list(source_snapshot_ids or [])),
+                    summary,
+                    json_dumps(metadata),
+                    now,
+                ),
+            )
+        workline = self.get_workline(workline_id)
+        if workline is None:
+            raise RuntimeError("failed to read workline after insert")
+        return workline
+
+    def get_workline(self, workline_id: str) -> dict[str, Any] | None:
+        self.init()
+        with self.session() as conn:
+            row = conn.execute(
+                "SELECT * FROM worklines WHERE workline_id = ?",
+                (workline_id,),
+            ).fetchone()
+        return self._workline_row_to_dict(row) if row else None
+
+    def list_worklines(
+        self,
+        *,
+        run_id: str = "",
+        status: str = "",
+        scope: str = "",
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        self.init()
+        clauses: list[str] = []
+        values: list[Any] = []
+        if run_id:
+            clauses.append("run_id = ?")
+            values.append(run_id)
+        if status:
+            clauses.append("status = ?")
+            values.append(status)
+        if scope:
+            clauses.append("scope = ?")
+            values.append(scope)
+        where = " WHERE " + " AND ".join(clauses) if clauses else ""
+        values.append(limit)
+        with self.session() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT *
+                FROM worklines
+                {where}
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                values,
+            ).fetchall()
+        return [self._workline_row_to_dict(row) for row in rows]
+
+    def record_advancement_opportunity(
+        self,
+        *,
+        run_id: str,
+        kind: str,
+        title: str,
+        description: str = "",
+        workline_id: str = "",
+        risk_level: str = "L2",
+        policy_decision: str = "",
+        status: str = "open",
+        evidence_ids: Iterable[str] | None = None,
+        proposal_id: str = "",
+        capability_name: str = "",
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        self.init()
+        if not title.strip():
+            raise ValueError("opportunity title cannot be empty")
+        opportunity_id = f"opp_{uuid.uuid4().hex}"
+        now = utc_now()
+        with self.session() as conn:
+            conn.execute(
+                """
+                INSERT INTO advancement_opportunities (
+                    opportunity_id, run_id, workline_id, kind, title,
+                    description, risk_level, policy_decision, status,
+                    evidence_ids_json, proposal_id, capability_name, metadata,
+                    created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    opportunity_id,
+                    run_id,
+                    workline_id,
+                    kind,
+                    title.strip(),
+                    description,
+                    risk_level,
+                    policy_decision,
+                    status,
+                    json_dumps(list(evidence_ids or [])),
+                    proposal_id,
+                    capability_name,
+                    json_dumps(metadata),
+                    now,
+                ),
+            )
+        opportunity = self.get_advancement_opportunity(opportunity_id)
+        if opportunity is None:
+            raise RuntimeError("failed to read advancement opportunity after insert")
+        return opportunity
+
+    def get_advancement_opportunity(self, opportunity_id: str) -> dict[str, Any] | None:
+        self.init()
+        with self.session() as conn:
+            row = conn.execute(
+                "SELECT * FROM advancement_opportunities WHERE opportunity_id = ?",
+                (opportunity_id,),
+            ).fetchone()
+        return self._advancement_opportunity_row_to_dict(row) if row else None
+
+    def list_advancement_opportunities(
+        self,
+        *,
+        run_id: str = "",
+        status: str = "",
+        kind: str = "",
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        self.init()
+        clauses: list[str] = []
+        values: list[Any] = []
+        if run_id:
+            clauses.append("run_id = ?")
+            values.append(run_id)
+        if status:
+            clauses.append("status = ?")
+            values.append(status)
+        if kind:
+            clauses.append("kind = ?")
+            values.append(kind)
+        where = " WHERE " + " AND ".join(clauses) if clauses else ""
+        values.append(limit)
+        with self.session() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT *
+                FROM advancement_opportunities
+                {where}
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                values,
+            ).fetchall()
+        return [self._advancement_opportunity_row_to_dict(row) for row in rows]
+
     def migration_status(self) -> dict[str, Any]:
         self.init()
         with self.session() as conn:
@@ -1609,6 +1969,13 @@ class MemSuStore:
             finding_count = conn.execute(
                 "SELECT COUNT(*) FROM observation_findings"
             ).fetchone()[0]
+            advancement_run_count = conn.execute(
+                "SELECT COUNT(*) FROM advancement_runs"
+            ).fetchone()[0]
+            workline_count = conn.execute("SELECT COUNT(*) FROM worklines").fetchone()[0]
+            opportunity_count = conn.execute(
+                "SELECT COUNT(*) FROM advancement_opportunities"
+            ).fetchone()[0]
         return {
             "ok": True,
             "db_path": str(self.db_path),
@@ -1623,6 +1990,9 @@ class MemSuStore:
             "observation_run_count": observation_run_count,
             "evidence_ref_count": evidence_count,
             "observation_finding_count": finding_count,
+            "advancement_run_count": advancement_run_count,
+            "workline_count": workline_count,
+            "advancement_opportunity_count": opportunity_count,
         }
 
     def _event_row_to_dict(self, row: sqlite3.Row) -> dict[str, Any]:
@@ -1896,4 +2266,50 @@ class MemSuStore:
             "observe_path": row["observe_path"],
             "created_at": row["created_at"],
             "metadata": json_loads(row["metadata"], {}),
+        }
+
+    def _advancement_run_row_to_dict(self, row: sqlite3.Row) -> dict[str, Any]:
+        return {
+            "run_id": row["run_id"],
+            "since": row["since"],
+            "mode": row["mode"],
+            "started_at": row["started_at"],
+            "finished_at": row["finished_at"],
+            "status": row["status"],
+            "policy_summary": json_loads(row["policy_summary_json"], {}),
+            "capability_calls": json_loads(row["capability_calls_json"], []),
+            "metadata": json_loads(row["metadata"], {}),
+        }
+
+    def _workline_row_to_dict(self, row: sqlite3.Row) -> dict[str, Any]:
+        return {
+            "workline_id": row["workline_id"],
+            "run_id": row["run_id"],
+            "title": row["title"],
+            "scope": row["scope"],
+            "status": row["status"],
+            "confidence": row["confidence"],
+            "evidence_ids": json_loads(row["evidence_ids_json"], []),
+            "source_snapshot_ids": json_loads(row["source_snapshot_ids_json"], []),
+            "summary": row["summary"],
+            "metadata": json_loads(row["metadata"], {}),
+            "created_at": row["created_at"],
+        }
+
+    def _advancement_opportunity_row_to_dict(self, row: sqlite3.Row) -> dict[str, Any]:
+        return {
+            "opportunity_id": row["opportunity_id"],
+            "run_id": row["run_id"],
+            "workline_id": row["workline_id"],
+            "kind": row["kind"],
+            "title": row["title"],
+            "description": row["description"],
+            "risk_level": row["risk_level"],
+            "policy_decision": row["policy_decision"],
+            "status": row["status"],
+            "evidence_ids": json_loads(row["evidence_ids_json"], []),
+            "proposal_id": row["proposal_id"],
+            "capability_name": row["capability_name"],
+            "metadata": json_loads(row["metadata"], {}),
+            "created_at": row["created_at"],
         }

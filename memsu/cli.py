@@ -12,7 +12,13 @@ from .adapters import (
     record_workflow_result,
     snapshot_git_repo,
 )
-from .advance import build_advance_agenda, run_advance_skill
+from .advance import (
+    advance_capabilities,
+    build_advance_agenda,
+    plan_advance_run,
+    run_advance_adapter,
+    run_advance_skill,
+)
 from .discovery import ensure_discovery_files, status_payload
 from .agent_observe import run_agent_observe
 from .inspire import ensure_inspire_files, inspire_status, read_inspire
@@ -458,22 +464,94 @@ def cmd_advance_agenda(args: argparse.Namespace) -> int:
         MemSuStore(args.db),
         since=args.since,
         limit=args.limit,
+        rank_method=args.rank_method,
+        model=args.model,
     )
     print_json(result)
     return 0
 
 
+def cmd_advance_capabilities(args: argparse.Namespace) -> int:
+    print_json(advance_capabilities(kind=args.kind))
+    return 0
+
+
 def cmd_advance_run(args: argparse.Namespace) -> int:
-    result = run_advance_skill(
-        MemSuStore(args.db),
-        skill=args.skill,
-        since=args.since,
-        evidence_home=args.evidence_home or None,
-        dry_run=args.dry_run,
-        skip_observe=args.skip_observe,
-    )
+    if bool(args.skill) == bool(args.adapter):
+        if not args.skill and args.dry_run:
+            print_json(
+                plan_advance_run(
+                    MemSuStore(args.db),
+                    since=args.since,
+                    limit=args.limit,
+                    rank_method=args.rank_method,
+                    model=args.model,
+                    persist=True,
+                )
+            )
+            return 0
+        print_json(
+            {
+                "ok": False,
+                "status": "invalid_arguments",
+                "message": "Pass exactly one of --skill or --adapter.",
+            }
+        )
+        return 2
+    if args.skill:
+        result = run_advance_skill(
+            MemSuStore(args.db),
+            skill=args.skill,
+            since=args.since,
+            limit=args.limit,
+            evidence_home=args.evidence_home or None,
+            dry_run=args.dry_run,
+            skip_observe=args.skip_observe,
+            rank_method=args.rank_method,
+            model=args.model,
+        )
+    else:
+        result = run_advance_adapter(
+            MemSuStore(args.db),
+            adapter=args.adapter,
+            repo_path=args.repo_path,
+            workspace=args.workspace,
+            dry_run=args.dry_run,
+        )
     print_json(result)
     return 0 if result.get("ok") else 1
+
+
+def cmd_advance_runs(args: argparse.Namespace) -> int:
+    result = MemSuStore(args.db).list_advancement_runs(
+        status=args.status,
+        mode=args.mode,
+        limit=args.limit,
+    )
+    print_json({"runs": result})
+    return 0
+
+
+def cmd_advance_worklines(args: argparse.Namespace) -> int:
+    result = MemSuStore(args.db).list_worklines(
+        run_id=args.run_id,
+        status=args.status,
+        scope=args.scope,
+        limit=args.limit,
+    )
+    print_json({"worklines": result})
+    return 0
+
+
+def cmd_advance_opportunities(args: argparse.Namespace) -> int:
+    result = MemSuStore(args.db).list_advancement_opportunities(
+        run_id=args.run_id,
+        status=args.status,
+        kind=args.kind,
+        limit=args.limit,
+    )
+    print_json({"opportunities": result})
+    return 0
 
 
 def cmd_retain(args: argparse.Namespace) -> int:
@@ -759,14 +837,42 @@ def build_parser() -> argparse.ArgumentParser:
     p_advance_agenda = advance_sub.add_parser("agenda", help="Show inferred worklines and next-step suggestions")
     p_advance_agenda.add_argument("--since", default="24h")
     p_advance_agenda.add_argument("--limit", type=int, default=10)
+    p_advance_agenda.add_argument("--rank-method", choices=["rule", "llm"], default="rule")
+    p_advance_agenda.add_argument("--model", default="")
     p_advance_agenda.set_defaults(func=cmd_advance_agenda)
-    p_advance_run = advance_sub.add_parser("run", help="Run a stable advancement skill")
-    p_advance_run.add_argument("--skill", required=True)
+    p_advance_capabilities = advance_sub.add_parser("capabilities", help="List auto-callable skills and adapters")
+    p_advance_capabilities.add_argument("--kind", choices=["", "skill", "adapter"], default="")
+    p_advance_capabilities.set_defaults(func=cmd_advance_capabilities)
+    p_advance_run = advance_sub.add_parser("run", help="Run a registered advancement skill or adapter")
+    p_advance_run.add_argument("--skill", default="")
+    p_advance_run.add_argument("--adapter", default="")
     p_advance_run.add_argument("--since", default="24h")
+    p_advance_run.add_argument("--limit", type=int, default=10)
+    p_advance_run.add_argument("--rank-method", choices=["rule", "llm"], default="rule")
+    p_advance_run.add_argument("--model", default="")
     p_advance_run.add_argument("--evidence-home", default="")
     p_advance_run.add_argument("--dry-run", action="store_true")
     p_advance_run.add_argument("--skip-observe", action="store_true")
+    p_advance_run.add_argument("--repo-path", default=".")
+    p_advance_run.add_argument("--workspace", default="")
     p_advance_run.set_defaults(func=cmd_advance_run)
+    p_advance_runs = advance_sub.add_parser("runs", help="List recorded advancement runs")
+    p_advance_runs.add_argument("--status", default="")
+    p_advance_runs.add_argument("--mode", default="")
+    p_advance_runs.add_argument("--limit", type=int, default=20)
+    p_advance_runs.set_defaults(func=cmd_advance_runs)
+    p_advance_worklines = advance_sub.add_parser("worklines", help="List recorded advancement worklines")
+    p_advance_worklines.add_argument("--run-id", default="")
+    p_advance_worklines.add_argument("--status", default="")
+    p_advance_worklines.add_argument("--scope", default="")
+    p_advance_worklines.add_argument("--limit", type=int, default=50)
+    p_advance_worklines.set_defaults(func=cmd_advance_worklines)
+    p_advance_opportunities = advance_sub.add_parser("opportunities", help="List recorded advancement opportunities")
+    p_advance_opportunities.add_argument("--run-id", default="")
+    p_advance_opportunities.add_argument("--status", default="")
+    p_advance_opportunities.add_argument("--kind", default="")
+    p_advance_opportunities.add_argument("--limit", type=int, default=50)
+    p_advance_opportunities.set_defaults(func=cmd_advance_opportunities)
 
     p_retain = sub.add_parser("retain", help="Retain a memory item")
     p_retain.add_argument("content")

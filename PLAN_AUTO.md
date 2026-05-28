@@ -370,7 +370,8 @@ This prevents the observation agent from becoming an unbounded executor.
 ### Auto 0.3: Skill/Adapter Invocation
 
 - add `advance run --skill <name>` and `advance run --adapter <name>`
-- maintain a local registry of auto-callable capabilities
+- maintain a local registry of auto-callable capabilities (implemented for
+  `observe-to-proposals` and `git-activity`)
 - reject unknown capabilities unless explicitly allowed by the user
 - record every call and output as an event
 
@@ -382,17 +383,20 @@ This prevents the observation agent from becoming an unbounded executor.
 
 ### Auto 0.5: Workline History
 
-- introduce dedicated advancement tables
-- track workline continuity across runs
-- detect repeated workflows and stale worklines
-- support agenda review by local agents
+- introduce dedicated advancement tables (implemented)
+- track workline continuity across runs (implemented)
+- detect repeated workflows and stale worklines (implemented with deterministic
+  suggestions)
+- support agenda review by local agents (implemented through `advance runs`,
+  `advance worklines`, and `advance opportunities`)
 
 ### Auto 0.6: Model-Assisted Ranking
 
 - optionally let a trusted OpenAI-compatible endpoint rank opportunities
-- keep deterministic fallback ranking
-- require evidence ids and policy labels in model output
-- never let model output directly execute an action
+  (implemented behind `--rank-method llm`)
+- keep deterministic fallback ranking (implemented)
+- require evidence ids and policy labels in model output (implemented)
+- never let model output directly execute an action (implemented)
 
 ## Non-Goals
 

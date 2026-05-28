@@ -296,12 +296,19 @@ python -m memsu observe list
 Observe writes to `${MEMSU_HOME:-~/.memsu}/observe/YYYY-MM-DD.md` and records a
 snapshot row in SQLite. See [docs/observe.md](docs/observe.md).
 
-Run the skill/adapter-controlled advancement MVP:
+Run the skill/adapter-controlled advancement kernel:
 
 ```powershell
 python -m memsu advance agenda
+python -m memsu advance agenda --rank-method llm
+python -m memsu advance capabilities
+python -m memsu advance run --dry-run
 python -m memsu advance run --skill observe-to-proposals --dry-run
 python -m memsu advance run --skill observe-to-proposals
+python -m memsu advance run --adapter git-activity --repo-path .
+python -m memsu advance runs
+python -m memsu advance worklines
+python -m memsu advance opportunities
 ```
 
 Advance reads existing observations, findings, candidates, conflicts, summaries,
@@ -405,7 +412,7 @@ Implemented:
 - V3 user-editable `${MEMSU_HOME:-~/.memsu}/inspire.md` and `inspire.d/*.md`
 - V3 observation run, evidence reference, and finding tables
 - initial `observe agent` planning entrypoint
-- initial `advance agenda` and `advance run --skill observe-to-proposals`
+- skill/adapter-controlled `advance` kernel with capability registry, agenda generation, skill/adapter invocation, advancement history, repeated-workline detection, and optional LLM ranking
 - rule-based and optional OpenAI-compatible LLM candidate extraction from events
 - candidate accept and reject flow
 - possible conflict hints for similar same-scope memories

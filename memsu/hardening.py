@@ -31,6 +31,9 @@ EXPORT_TABLES = [
     "observation_runs",
     "evidence_refs",
     "observation_findings",
+    "advancement_runs",
+    "worklines",
+    "advancement_opportunities",
 ]
 
 
@@ -99,6 +102,11 @@ def privacy_scan(store: MemSuStore, *, limit: int = 200) -> dict[str, Any]:
         ("evidence_refs", "evidence_id", "metadata"),
         ("observation_findings", "finding_id", "claim"),
         ("observation_findings", "finding_id", "metadata"),
+        ("advancement_runs", "run_id", "metadata"),
+        ("worklines", "workline_id", "title"),
+        ("worklines", "workline_id", "metadata"),
+        ("advancement_opportunities", "opportunity_id", "description"),
+        ("advancement_opportunities", "opportunity_id", "metadata"),
     ]
     with store.session() as conn:
         for table, id_column, text_column in scan_targets:

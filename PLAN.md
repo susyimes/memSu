@@ -17,8 +17,7 @@ Implemented:
 - V4 user-editable `${MEMSU_HOME:-~/.memsu}/inspire.md` and `inspire.d/*.md` initialization
 - V3 observation run, evidence reference, and observation finding storage
 - initial `observe agent` planning entrypoint and prompt/toolbelt contract
-- skill/adapter-controlled autonomous advancement design for agenda generation and policy-gated next steps
-- initial `advance agenda` and `advance run --skill observe-to-proposals` MVP
+- skill/adapter-controlled autonomous advancement kernel with registered capabilities, agenda generation, policy-gated suggestions, history tables, repeated-workline detection, and optional LLM ranking
 - rule-based candidate extraction pipeline
 - optional OpenAI-compatible LLM candidate extraction pipeline
 - candidate accept and reject flow
