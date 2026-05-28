@@ -13,6 +13,17 @@ memSu does not need to run as a daemon. The default integration model is
 CLI-first: any trusted local agent can execute `python -m memsu ...` and read or
 write the same local SQLite store.
 
+## Product Roadmap
+
+The current product roadmap is [ROADMAP.md](ROADMAP.md). It resets memSu around
+the core loop: user context or cold start, scheduled local observation, a
+manual Markdown task board, assistance analysis, autonomous low-risk
+verification, and state updates.
+
+Older `PLAN_V2.md`, `PLAN_V3.md`, `PLAN_V4.md`, and `PLAN_AUTO.md` files remain
+as technical design history. New product work should start from the roadmap and
+only drop into those plans when implementation detail is needed.
+
 ## Core Idea
 
 Most agent memory systems only remember one conversation inside one runtime.

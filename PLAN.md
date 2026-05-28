@@ -1,5 +1,13 @@
 # memSu Implementation Plan
 
+The product-level roadmap is now [ROADMAP.md](ROADMAP.md). It is the preferred
+entry point for understanding the intended memSu loop: context or cold start,
+scheduled device observation, a user-owned Markdown task board, assistance
+analysis, autonomous low-risk verification, and state updates.
+
+This file remains as implementation history and status for the existing memory,
+observe, policy, curator, and advancement layers.
+
 ## Current MVP Status
 
 V2 observe-layer planning is tracked in [PLAN_V2.md](PLAN_V2.md).
