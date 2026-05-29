@@ -2,8 +2,10 @@
 
 The product-level roadmap is now [ROADMAP.md](ROADMAP.md). It is the preferred
 entry point for understanding the intended memSu loop: context or cold start,
-scheduled device observation, a user-owned Markdown task board, assistance
-analysis, autonomous low-risk verification, and state updates.
+scheduled device observation, a messy human inbox, a structured Markdown task
+board, assistance analysis, autonomous low-risk verification, and state updates.
+Agents operating against a local memSu home should start from
+`${MEMSU_HOME:-~/.memsu}/AGENTS.md`.
 
 This file remains as implementation history and status for the existing memory,
 observe, policy, curator, and advancement layers.
@@ -22,10 +24,13 @@ Implemented:
 - basic memory item store
 - CLI-first status and machine-independent discovery manifests
 - observe snapshot storage and `${MEMSU_HOME:-~/.memsu}/observe/YYYY-MM-DD.md` output
+- user-editable `${MEMSU_HOME:-~/.memsu}/AGENTS.md` local agent guide with `guide init/path/show`
 - V4 user-editable `${MEMSU_HOME:-~/.memsu}/inspire.md` and `inspire.d/*.md` initialization
+- user-editable `${MEMSU_HOME:-~/.memsu}/inbox/` for messy human notes, with archive-backed promotion into the task board
+- user-owned `${MEMSU_HOME:-~/.memsu}/tasks.md` task board initialization, CLI parsing/updating, and agent claim/release leases
 - V3 observation run, evidence reference, and observation finding storage
 - initial `observe agent` planning entrypoint and prompt/toolbelt contract
-- skill/adapter-controlled autonomous advancement kernel with registered capabilities, agenda generation, policy-gated suggestions, history tables, repeated-workline detection, and optional LLM ranking
+- skill/adapter-controlled autonomous advancement kernel with registered capabilities, inbox/task-board-aware agenda generation, policy-gated suggestions, history tables, repeated-workline detection, and optional LLM ranking
 - rule-based candidate extraction pipeline
 - optional OpenAI-compatible LLM candidate extraction pipeline
 - candidate accept and reject flow
@@ -34,7 +39,7 @@ Implemented:
 - L0-L4 proactive policy engine with action proposals, configurable defaults, and policy event log
 - curator jobs for dedupe, stale detection, summaries, and conflict review queue
 - production hardening tools for migration status, backup, export, privacy review, and sparse vector recall
-- CLI for init, status, doctor, observe, event append/list, extract, candidate review, retain, recall, audit, and forget
+- CLI for init, status, doctor, guide, inbox, task, observe, event append/list, extract, candidate review, retain, recall, audit, and forget
 - Hermes skills and bootstrap prompt
 - PowerShell install, doctor, and observe scheduled task scripts
 
@@ -43,6 +48,9 @@ Known limitations:
 - LLM extraction requires an explicitly configured OpenAI-compatible endpoint, skips sensitive events, and still creates review-first candidates.
 - Agent observation is explicit transcript/workflow ingestion, not hidden desktop surveillance.
 - Policy configuration currently supports simple local defaults, not a full rule DSL.
+- `AGENTS.md` is an onboarding contract for agents, not a scheduler; tasks still execute only when a user, agent, automation, or workflow chooses work.
+- Inbox promotion is deterministic plumbing for agents; it does not yet include a model-led summarizer that decides what every messy file should become.
+- R5 model-led execution is not implemented yet. Today's loop can generate suggestions, run low-risk commands through explicit CLI calls, and update task state, but the model still has to be orchestrated by the caller instead of receiving the whole context/capability bundle and choosing the next low-risk action itself.
 - The HTTP service/provider path has been removed and should only be reintroduced if CLI latency, concurrency, or integration needs justify it.
 
 ## Phase 0: Repository Foundation

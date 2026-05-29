@@ -531,7 +531,8 @@ class MemSuStore:
                 duplicate = True
                 event_id = row["event_id"]
 
-        return {"event_id": event_id, "source_hash": source_hash, "duplicate": duplicate}
+        event = self.get_event(event_id) or {"event_id": event_id}
+        return {**event, "source_hash": source_hash, "duplicate": duplicate}
 
     def list_events(self, limit: int = 20) -> list[dict[str, Any]]:
         self.init()

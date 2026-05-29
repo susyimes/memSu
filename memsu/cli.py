@@ -19,12 +19,29 @@ from .advance import (
     run_advance_adapter,
     run_advance_skill,
 )
+from .agent_guide import agent_guide_status, ensure_agent_guide, read_agent_guide
 from .discovery import ensure_discovery_files, status_payload
 from .agent_observe import run_agent_observe
+from .inbox import (
+    capture_inbox_note,
+    ensure_inbox,
+    inbox_status,
+    promote_inbox_file,
+    read_inbox,
+)
 from .inspire import ensure_inspire_files, inspire_status, read_inspire
 from .observe import observe_doctor, run_observe
 from .paths import default_db_path, default_observe_dir, default_policy_path, memsu_home
 from .store import EVENT_TYPES, MEMORY_TYPES, MemSuStore
+from .tasks import (
+    claim_task,
+    ensure_task_board,
+    get_task,
+    read_task_board,
+    release_task,
+    task_board_status,
+    update_task_status,
+)
 
 
 DEFAULT_POLICY = """# memSu default policy
@@ -64,7 +81,10 @@ def cmd_init(args: argparse.Namespace) -> int:
     store = MemSuStore(args.db)
     store.init()
     ensure_policy_file()
+    agent_guide = ensure_agent_guide()
     inspire = ensure_inspire_files()
+    tasks = ensure_task_board()
+    inbox = ensure_inbox()
     default_observe_dir().mkdir(parents=True, exist_ok=True)
     discovery = ensure_discovery_files()
     print_json(
@@ -73,7 +93,10 @@ def cmd_init(args: argparse.Namespace) -> int:
             "db_path": str(store.db_path),
             "home": str(memsu_home()),
             "observe_dir": str(default_observe_dir()),
+            "agent_guide": agent_guide,
             "inspire": inspire,
+            "tasks": tasks,
+            "inbox": inbox,
             "discovery": discovery,
         }
     )
@@ -82,6 +105,21 @@ def cmd_init(args: argparse.Namespace) -> int:
 
 def cmd_status(args: argparse.Namespace) -> int:
     print_json(status_payload(MemSuStore(args.db)))
+    return 0
+
+
+def cmd_guide_init(args: argparse.Namespace) -> int:
+    print_json(ensure_agent_guide(overwrite=args.force))
+    return 0
+
+
+def cmd_guide_path(args: argparse.Namespace) -> int:
+    print_json(agent_guide_status())
+    return 0
+
+
+def cmd_guide_show(args: argparse.Namespace) -> int:
+    print_json(read_agent_guide())
     return 0
 
 
@@ -104,7 +142,10 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     store = MemSuStore(args.db)
     store.init()
     ensure_policy_file()
+    agent_guide = ensure_agent_guide()
     ensure_inspire_files()
+    tasks = ensure_task_board()
+    inbox = ensure_inbox()
     default_observe_dir().mkdir(parents=True, exist_ok=True)
     ensure_discovery_files()
     event = store.append_event(
@@ -132,9 +173,122 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             "memory": memory,
             "recall_count": len(recall),
             "policy_path": str(default_policy_path()),
+            "agent_guide": agent_guide,
+            "tasks": tasks,
+            "inbox": inbox,
         }
     )
     return 0 if ok else 1
+
+
+def cmd_task_init(args: argparse.Namespace) -> int:
+    print_json(ensure_task_board(overwrite=args.force))
+    return 0
+
+
+def cmd_task_path(args: argparse.Namespace) -> int:
+    print_json(task_board_status())
+    return 0
+
+
+def cmd_task_list(args: argparse.Namespace) -> int:
+    board = read_task_board()
+    tasks = board["tasks"]
+    if args.status:
+        tasks = [task for task in tasks if task.get("status") == args.status]
+    if args.scope:
+        tasks = [task for task in tasks if task.get("scope") == args.scope]
+    payload = {**board, "tasks": tasks[:args.limit], "task_count": len(tasks)}
+    payload.pop("content", None)
+    print_json(payload)
+    return 0
+
+
+def cmd_task_show(args: argparse.Namespace) -> int:
+    task = get_task(args.task_id)
+    if task is None:
+        print_json({"ok": False, "status": "not_found", "task_id": args.task_id})
+        return 1
+    print_json({"ok": True, "task": task})
+    return 0
+
+
+def cmd_task_update(args: argparse.Namespace) -> int:
+    result = update_task_status(
+        args.task_id,
+        status=args.status,
+        note=args.note,
+    )
+    print_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def cmd_task_claim(args: argparse.Namespace) -> int:
+    result = claim_task(
+        args.task_id,
+        agent=args.agent,
+        lease=args.lease,
+        note=args.note,
+        force=args.force,
+    )
+    print_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def cmd_task_release(args: argparse.Namespace) -> int:
+    result = release_task(
+        args.task_id,
+        agent=args.agent,
+        note=args.note,
+        force=args.force,
+    )
+    print_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def cmd_inbox_init(args: argparse.Namespace) -> int:
+    print_json(ensure_inbox())
+    return 0
+
+
+def cmd_inbox_path(args: argparse.Namespace) -> int:
+    print_json(inbox_status())
+    return 0
+
+
+def cmd_inbox_list(args: argparse.Namespace) -> int:
+    payload = read_inbox()
+    files = payload["files"]
+    payload["files"] = files[:args.limit]
+    payload["file_count"] = len(files)
+    print_json(payload)
+    return 0
+
+
+def cmd_inbox_add(args: argparse.Namespace) -> int:
+    result = capture_inbox_note(title=args.title, content=args.content)
+    print_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def cmd_inbox_promote(args: argparse.Namespace) -> int:
+    try:
+        result = promote_inbox_file(
+            args.file,
+            title=args.title,
+            status=args.status,
+            priority=args.priority,
+            scope=args.scope,
+            context=args.context,
+            blocked=args.blocked,
+            acceptance=args.acceptance or [],
+            note=args.note,
+            dry_run=args.dry_run,
+        )
+    except ValueError as exc:
+        result = {"ok": False, "status": "invalid_path", "message": str(exc)}
+    print_json(result)
+    return 0 if result.get("ok") else 1
 
 
 def cmd_event_append(args: argparse.Namespace) -> int:
@@ -600,6 +754,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_status = sub.add_parser("status", help="Show CLI-first memSu discovery status")
     p_status.set_defaults(func=cmd_status)
 
+    p_guide = sub.add_parser("guide", help="Inspect or initialize the local AGENTS.md guide")
+    guide_sub = p_guide.add_subparsers(dest="guide_command", required=True)
+    p_guide_init = guide_sub.add_parser("init", help="Create the local AGENTS.md guide")
+    p_guide_init.add_argument("--force", action="store_true", help="Overwrite AGENTS.md with the default guide")
+    p_guide_init.set_defaults(func=cmd_guide_init)
+    p_guide_path = guide_sub.add_parser("path", help="Show the AGENTS.md path")
+    p_guide_path.set_defaults(func=cmd_guide_path)
+    p_guide_show = guide_sub.add_parser("show", help="Show AGENTS.md content")
+    p_guide_show.set_defaults(func=cmd_guide_show)
+
     p_inspire = sub.add_parser("inspire", help="Inspect or initialize user-editable V3 inspire notes")
     inspire_sub = p_inspire.add_subparsers(dest="inspire_command", required=True)
     p_inspire_init = inspire_sub.add_parser("init", help="Create the user-editable inspire.md template")
@@ -609,6 +773,66 @@ def build_parser() -> argparse.ArgumentParser:
     p_inspire_path.set_defaults(func=cmd_inspire_path)
     p_inspire_show = inspire_sub.add_parser("show", help="Show inspire.md content")
     p_inspire_show.set_defaults(func=cmd_inspire_show)
+
+    p_task = sub.add_parser("task", help="Inspect or update the user-owned Markdown task board")
+    task_sub = p_task.add_subparsers(dest="task_command", required=True)
+    p_task_init = task_sub.add_parser("init", help="Create the user-editable tasks.md template")
+    p_task_init.add_argument("--force", action="store_true", help="Overwrite tasks.md with the default template")
+    p_task_init.set_defaults(func=cmd_task_init)
+    p_task_path = task_sub.add_parser("path", help="Show the tasks.md path and status")
+    p_task_path.set_defaults(func=cmd_task_path)
+    p_task_list = task_sub.add_parser("list", help="List parsed tasks from tasks.md")
+    p_task_list.add_argument("--status", default="")
+    p_task_list.add_argument("--scope", default="")
+    p_task_list.add_argument("--limit", type=int, default=50)
+    p_task_list.set_defaults(func=cmd_task_list)
+    p_task_show = task_sub.add_parser("show", help="Show one parsed task")
+    p_task_show.add_argument("task_id")
+    p_task_show.set_defaults(func=cmd_task_show)
+    p_task_update = task_sub.add_parser("update", help="Update one task status and append history")
+    p_task_update.add_argument("task_id")
+    p_task_update.add_argument("--status", required=True)
+    p_task_update.add_argument("--note", default="")
+    p_task_update.set_defaults(func=cmd_task_update)
+    p_task_claim = task_sub.add_parser("claim", help="Claim a task for an agent without changing task status")
+    p_task_claim.add_argument("task_id")
+    p_task_claim.add_argument("--agent", required=True)
+    p_task_claim.add_argument("--lease", default="2h", help="Claim lease such as 30m, 2h, or 1d")
+    p_task_claim.add_argument("--note", default="")
+    p_task_claim.add_argument("--force", action="store_true", help="Override an existing claim")
+    p_task_claim.set_defaults(func=cmd_task_claim)
+    p_task_release = task_sub.add_parser("release", help="Release a task claim without changing task status")
+    p_task_release.add_argument("task_id")
+    p_task_release.add_argument("--agent", default="")
+    p_task_release.add_argument("--note", default="")
+    p_task_release.add_argument("--force", action="store_true", help="Release even if another agent claimed it")
+    p_task_release.set_defaults(func=cmd_task_release)
+
+    p_inbox = sub.add_parser("inbox", help="Manage messy user notes before agents promote them into tasks.md")
+    inbox_sub = p_inbox.add_subparsers(dest="inbox_command", required=True)
+    p_inbox_init = inbox_sub.add_parser("init", help="Create the user-editable inbox and archive folders")
+    p_inbox_init.set_defaults(func=cmd_inbox_init)
+    p_inbox_path = inbox_sub.add_parser("path", help="Show the inbox and archive paths")
+    p_inbox_path.set_defaults(func=cmd_inbox_path)
+    p_inbox_list = inbox_sub.add_parser("list", help="List unprocessed inbox text files")
+    p_inbox_list.add_argument("--limit", type=int, default=50)
+    p_inbox_list.set_defaults(func=cmd_inbox_list)
+    p_inbox_add = inbox_sub.add_parser("add", help="Capture a quick note into the inbox")
+    p_inbox_add.add_argument("--title", required=True)
+    p_inbox_add.add_argument("--content", default="")
+    p_inbox_add.set_defaults(func=cmd_inbox_add)
+    p_inbox_promote = inbox_sub.add_parser("promote", help="Promote an inbox file into tasks.md and archive the source")
+    p_inbox_promote.add_argument("file")
+    p_inbox_promote.add_argument("--title", default="")
+    p_inbox_promote.add_argument("--status", default="todo")
+    p_inbox_promote.add_argument("--priority", default="P2")
+    p_inbox_promote.add_argument("--scope", default="")
+    p_inbox_promote.add_argument("--context", default="")
+    p_inbox_promote.add_argument("--blocked", default="")
+    p_inbox_promote.add_argument("--acceptance", action="append", default=[])
+    p_inbox_promote.add_argument("--note", default="")
+    p_inbox_promote.add_argument("--dry-run", action="store_true")
+    p_inbox_promote.set_defaults(func=cmd_inbox_promote)
 
     p_doctor = sub.add_parser("doctor", help="Run a local smoke test")
     p_doctor.set_defaults(func=cmd_doctor)

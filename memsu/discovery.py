@@ -7,13 +7,17 @@ from typing import Any
 
 from . import __version__
 from .paths import (
+    default_agent_guide_path,
     default_capabilities_path,
     default_db_path,
+    default_inbox_archive_dir,
+    default_inbox_dir,
     default_inspire_dir,
     default_inspire_path,
     default_install_marker_path,
     default_observe_dir,
     default_policy_path,
+    default_tasks_path,
     memsu_home,
 )
 from .store import SCHEMA_VERSION, MemSuStore
@@ -33,6 +37,7 @@ def install_manifest() -> dict[str, Any]:
         "home_env": "MEMSU_HOME",
         "entrypoint": ENTRYPOINT,
         "capabilities_path": f"{PLACEHOLDER_HOME}/capabilities.json",
+        "agent_guide_path": f"{PLACEHOLDER_HOME}/AGENTS.md",
     }
 
 
@@ -55,6 +60,9 @@ def capabilities_manifest() -> dict[str, Any]:
             "event_append": f"{ENTRYPOINT} event append",
             "observe_run": f"{ENTRYPOINT} observe run",
             "observe_agent": f"{ENTRYPOINT} observe agent",
+            "guide_path": f"{ENTRYPOINT} guide path",
+            "guide_show": f"{ENTRYPOINT} guide show",
+            "guide_init": f"{ENTRYPOINT} guide init",
             "advance_agenda": f"{ENTRYPOINT} advance agenda",
             "advance_capabilities": f"{ENTRYPOINT} advance capabilities",
             "advance_run": f"{ENTRYPOINT} advance run --skill observe-to-proposals",
@@ -65,6 +73,18 @@ def capabilities_manifest() -> dict[str, Any]:
             "inspire_path": f"{ENTRYPOINT} inspire path",
             "inspire_show": f"{ENTRYPOINT} inspire show",
             "inspire_init": f"{ENTRYPOINT} inspire init",
+            "inbox_path": f"{ENTRYPOINT} inbox path",
+            "inbox_init": f"{ENTRYPOINT} inbox init",
+            "inbox_list": f"{ENTRYPOINT} inbox list",
+            "inbox_add": f"{ENTRYPOINT} inbox add",
+            "inbox_promote": f"{ENTRYPOINT} inbox promote",
+            "task_path": f"{ENTRYPOINT} task path",
+            "task_init": f"{ENTRYPOINT} task init",
+            "task_list": f"{ENTRYPOINT} task list",
+            "task_show": f"{ENTRYPOINT} task show",
+            "task_update": f"{ENTRYPOINT} task update",
+            "task_claim": f"{ENTRYPOINT} task claim",
+            "task_release": f"{ENTRYPOINT} task release",
             "candidate_list": f"{ENTRYPOINT} candidate list",
             "curator_run": f"{ENTRYPOINT} curator run",
             "policy_evaluate": f"{ENTRYPOINT} policy evaluate",
@@ -73,8 +93,12 @@ def capabilities_manifest() -> dict[str, Any]:
             "home": PLACEHOLDER_HOME,
             "db": f"{PLACEHOLDER_HOME}/memsu.db",
             "observe_dir": f"{PLACEHOLDER_HOME}/observe",
+            "agent_guide": f"{PLACEHOLDER_HOME}/AGENTS.md",
             "inspire": f"{PLACEHOLDER_HOME}/inspire.md",
             "inspire_dir": f"{PLACEHOLDER_HOME}/inspire.d",
+            "inbox": f"{PLACEHOLDER_HOME}/inbox",
+            "inbox_archive": f"{PLACEHOLDER_HOME}/inbox/archive",
+            "tasks": f"{PLACEHOLDER_HOME}/tasks.md",
             "policy": f"{PLACEHOLDER_HOME}/policy.yaml",
             "capabilities": f"{PLACEHOLDER_HOME}/capabilities.json",
             "install_marker": f"{PLACEHOLDER_HOME}/install.json",
@@ -103,8 +127,12 @@ def status_payload(store: MemSuStore | None = None) -> dict[str, Any]:
     capabilities_path = default_capabilities_path()
     policy_path = default_policy_path()
     observe_dir = default_observe_dir()
+    agent_guide_path = default_agent_guide_path()
     inspire_path = default_inspire_path()
     inspire_dir = default_inspire_dir()
+    inbox_dir = default_inbox_dir()
+    inbox_archive_dir = default_inbox_archive_dir()
+    tasks_path = default_tasks_path()
     schema_version = read_schema_version(db_path) if initialized else None
 
     return {
@@ -119,8 +147,12 @@ def status_payload(store: MemSuStore | None = None) -> dict[str, Any]:
             "home": PLACEHOLDER_HOME,
             "db": f"{PLACEHOLDER_HOME}/memsu.db",
             "observe_dir": f"{PLACEHOLDER_HOME}/observe",
+            "agent_guide": f"{PLACEHOLDER_HOME}/AGENTS.md",
             "inspire": f"{PLACEHOLDER_HOME}/inspire.md",
             "inspire_dir": f"{PLACEHOLDER_HOME}/inspire.d",
+            "inbox": f"{PLACEHOLDER_HOME}/inbox",
+            "inbox_archive": f"{PLACEHOLDER_HOME}/inbox/archive",
+            "tasks": f"{PLACEHOLDER_HOME}/tasks.md",
             "policy": f"{PLACEHOLDER_HOME}/policy.yaml",
             "capabilities": f"{PLACEHOLDER_HOME}/capabilities.json",
             "install_marker": f"{PLACEHOLDER_HOME}/install.json",
@@ -129,8 +161,12 @@ def status_payload(store: MemSuStore | None = None) -> dict[str, Any]:
             "home": str(memsu_home()),
             "db": str(db_path),
             "observe_dir": str(observe_dir),
+            "agent_guide": str(agent_guide_path),
             "inspire": str(inspire_path),
             "inspire_dir": str(inspire_dir),
+            "inbox": str(inbox_dir),
+            "inbox_archive": str(inbox_archive_dir),
+            "tasks": str(tasks_path),
             "policy": str(policy_path),
             "capabilities": str(capabilities_path),
             "install_marker": str(marker_path),
@@ -140,9 +176,13 @@ def status_payload(store: MemSuStore | None = None) -> dict[str, Any]:
             "policy": policy_path.exists(),
             "inspire": inspire_path.exists(),
             "inspire_dir": inspire_dir.exists(),
+            "inbox": inbox_dir.exists(),
+            "inbox_archive": inbox_archive_dir.exists(),
+            "tasks": tasks_path.exists(),
             "capabilities": capabilities_path.exists(),
             "install_marker": marker_path.exists(),
             "observe_dir": observe_dir.exists(),
+            "agent_guide": agent_guide_path.exists(),
         },
     }
 

@@ -41,12 +41,14 @@ class AdapterTests(unittest.TestCase):
             summary="unit tests passed",
             workspace="memSu",
             repo="susyimes/memSu",
+            task_id="task_adapter_123",
         )
 
         events = self.store.list_events(limit=10)
         self.assertEqual(2, len(events))
         self.assertIn(shell["event_id"], {event["event_id"] for event in events})
         self.assertIn(workflow["event_id"], {event["event_id"] for event in events})
+        self.assertEqual("task_adapter_123", workflow["task_id"])
 
     def test_codex_transcript_adapter_supports_markdown(self) -> None:
         transcript = self.root / "codex.md"

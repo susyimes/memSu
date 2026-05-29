@@ -31,6 +31,22 @@ def default_inspire_dir() -> Path:
     return memsu_home() / "inspire.d"
 
 
+def default_agent_guide_path() -> Path:
+    return memsu_home() / "AGENTS.md"
+
+
+def default_tasks_path() -> Path:
+    return memsu_home() / "tasks.md"
+
+
+def default_inbox_dir() -> Path:
+    return memsu_home() / "inbox"
+
+
+def default_inbox_archive_dir() -> Path:
+    return default_inbox_dir() / "archive"
+
+
 def default_install_marker_path() -> Path:
     return memsu_home() / "install.json"
 

@@ -13,6 +13,7 @@ from memsu.advance import (
     run_advance_skill,
 )
 from memsu.cli import main
+from memsu.paths import default_inbox_dir, default_tasks_path
 from memsu.store import MemSuStore
 
 
@@ -72,6 +73,54 @@ class AdvanceTests(unittest.TestCase):
             agenda["suggestions"][0]["evidence"][0],
         )
         self.assertIn("memSu 推进议程", agenda["brief"])
+
+    def test_agenda_reads_manual_task_board_as_first_class_input(self) -> None:
+        tasks_path = default_tasks_path()
+        tasks_path.parent.mkdir(parents=True, exist_ok=True)
+        tasks_path.write_text(
+            "\n".join(
+                [
+                    "# memSu Tasks",
+                    "",
+                    "## [active][P1] Implement task board loop",
+                    "",
+                    "scope: project:memSu",
+                    "context: Roadmap says manual Markdown tasks are first-class input.",
+                    "",
+                    "acceptance:",
+                    "- advance agenda reads task board.",
+                    "- suggestions cite task ids.",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        agenda = build_advance_agenda(self.store)
+
+        self.assertEqual(1, agenda["task_count"])
+        self.assertEqual(1, agenda["source_counts"]["tasks"])
+        self.assertEqual("manual_task_board", agenda["worklines"][0]["basis"])
+        self.assertEqual("project:memSu", agenda["worklines"][0]["scope"])
+        self.assertEqual("assist_task", agenda["suggestions"][0]["kind"])
+        self.assertIn(agenda["worklines"][0]["task_id"], agenda["suggestions"][0]["evidence"])
+        self.assertIn("任务板", agenda["brief"])
+
+    def test_agenda_surfaces_unprocessed_inbox_files(self) -> None:
+        inbox_dir = default_inbox_dir()
+        inbox_dir.mkdir(parents=True, exist_ok=True)
+        (inbox_dir / "future.md").write_text(
+            "以后需要做一个人类乱写区，由 agent 整理进任务板。\n",
+            encoding="utf-8",
+        )
+
+        agenda = build_advance_agenda(self.store)
+
+        self.assertEqual(1, agenda["source_counts"]["inbox"])
+        self.assertEqual(1, agenda["inbox"]["file_count"])
+        self.assertEqual("human_inbox", agenda["worklines"][0]["basis"])
+        self.assertEqual("organize_inbox", agenda["suggestions"][0]["kind"])
+        self.assertIn("Inbox", agenda["brief"])
 
     def test_observe_to_proposals_records_policy_and_workflow_event(self) -> None:
         evidence_home = self.root / "evidence"

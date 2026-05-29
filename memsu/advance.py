@@ -18,6 +18,8 @@ from .capabilities import (
 )
 from .observe import run_observe
 from .store import MemSuStore, json_dumps, utc_now
+from .tasks import read_task_board
+from .inbox import read_inbox
 
 
 def advance_capabilities(*, kind: str = "") -> dict[str, Any]:
@@ -130,8 +132,17 @@ def build_advance_agenda(
         since_cutoff=since_cutoff,
         timestamp_keys=("timestamp",),
     )[:limit]
+    task_board = read_task_board()
+    tasks = [
+        task for task in task_board.get("tasks", [])
+        if task.get("status") not in {"done", "dropped"}
+    ][:limit]
+    inbox = read_inbox()
+    inbox_files = inbox.get("files", [])[:limit]
 
     worklines = derive_worklines(
+        inbox_files=inbox_files,
+        tasks=tasks,
         snapshots=snapshots,
         findings=findings,
         events=events,
@@ -139,6 +150,8 @@ def build_advance_agenda(
     )
     suggestions = derive_suggestions(
         snapshots=snapshots,
+        inbox_files=inbox_files,
+        tasks=tasks,
         worklines=worklines,
         candidates=candidates,
         conflicts=conflicts,
@@ -158,6 +171,8 @@ def build_advance_agenda(
         candidates=candidates,
         conflicts=conflicts,
         snapshots=snapshots,
+        tasks=tasks,
+        inbox_files=inbox_files,
     )
 
     return {
@@ -168,6 +183,18 @@ def build_advance_agenda(
         "suggestions": suggestions,
         "pending_candidate_count": len(candidates),
         "open_conflict_count": len(conflicts),
+        "task_count": len(tasks),
+        "task_board": {
+            "tasks_path": task_board.get("tasks_path", ""),
+            "exists": task_board.get("exists", False),
+            "task_count": task_board.get("task_count", 0),
+        },
+        "inbox": {
+            "inbox_dir": inbox.get("inbox_dir", ""),
+            "archive_dir": inbox.get("archive_dir", ""),
+            "exists": inbox.get("exists", False),
+            "file_count": inbox.get("file_count", 0),
+        },
         "summary_count": len(summaries),
         "history_suggestion_count": len(history_suggestions),
         "ranking": ranking,
@@ -177,6 +204,8 @@ def build_advance_agenda(
             "snapshots": len(snapshots),
             "findings": len(findings),
             "events": len(events),
+            "inbox": len(inbox_files),
+            "tasks": len(tasks),
             "summaries": len(summaries),
             "history_suggestions": len(history_suggestions),
         },
@@ -230,6 +259,12 @@ def persist_advancement_result(
                     "unknowns": workline.get("unknowns", []),
                     "finding_id": workline.get("finding_id", ""),
                     "event_id": workline.get("event_id", ""),
+                    "task_id": workline.get("task_id", ""),
+                    "task_status": workline.get("status", ""),
+                    "task_priority": workline.get("priority", ""),
+                    "claimed_by": workline.get("claimed_by", ""),
+                    "claim_until": workline.get("claim_until", ""),
+                    "inbox_refs": workline.get("inbox_refs", []),
                 },
             )
         )
@@ -557,12 +592,65 @@ def run_advance_adapter(
 
 def derive_worklines(
     *,
+    inbox_files: list[dict[str, Any]],
+    tasks: list[dict[str, Any]],
     snapshots: list[dict[str, Any]],
     findings: list[dict[str, Any]],
     events: list[dict[str, Any]],
     limit: int,
 ) -> list[dict[str, Any]]:
     worklines: list[dict[str, Any]] = []
+    for task in tasks:
+        if len(worklines) >= limit:
+            break
+        facts = []
+        if task.get("context"):
+            facts.append(compact(f"context: {task['context']}", 220))
+        if task.get("blocked"):
+            facts.append(compact(f"blocked: {task['blocked']}", 220))
+        if task.get("acceptance"):
+            facts.append(compact("acceptance: " + "; ".join(task["acceptance"][:3]), 220))
+        if task.get("claimed_by"):
+            facts.append(compact(
+                f"claimed_by: {task.get('claimed_by')} until {task.get('claim_until', '')}",
+                220,
+            ))
+        if not facts:
+            facts.append(f"status={task.get('status', 'todo')}")
+        worklines.append(
+            {
+                "title": compact(f"Task: {task.get('title', '')}", 180),
+                "scope": task.get("scope") or "task_board",
+                "confidence": task_confidence(task),
+                "basis": "manual_task_board",
+                "task_id": task.get("task_id", ""),
+                "facts": facts,
+                "inferences": ["用户手写任务板中的未完成任务，应优先作为协助分析输入。"],
+                "unknowns": task_unknowns(task),
+                "status": task.get("status", ""),
+                "priority": task.get("priority", ""),
+                "claimed_by": task.get("claimed_by", ""),
+                "claim_until": task.get("claim_until", ""),
+            }
+        )
+
+    if inbox_files and len(worklines) < limit:
+        paths = [item.get("relative_path", "") for item in inbox_files[:5]]
+        worklines.append(
+            {
+                "title": f"Inbox: {len(inbox_files)} unprocessed user note(s)",
+                "scope": "user_inbox",
+                "confidence": 0.72,
+                "basis": "human_inbox",
+                "inbox_refs": paths,
+                "facts": [f"unprocessed: {path}" for path in paths],
+                "inferences": [
+                    "用户把非结构化材料交给 agent 整理；应先归纳，再 promote 到 tasks.md。"
+                ],
+                "unknowns": ["需要模型读取 inbox 内容，判断哪些应成为任务、context 或归档。"],
+            }
+        )
+
     if snapshots:
         latest = snapshots[0]
         session_summaries = latest.get("sources", {}).get("session_summaries", {})
@@ -651,12 +739,34 @@ def derive_worklines(
 def derive_suggestions(
     *,
     snapshots: list[dict[str, Any]],
+    inbox_files: list[dict[str, Any]],
+    tasks: list[dict[str, Any]],
     worklines: list[dict[str, Any]],
     candidates: list[dict[str, Any]],
     conflicts: list[dict[str, Any]],
     summaries: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     suggestions: list[dict[str, Any]] = []
+    if inbox_files:
+        evidence = [item.get("relative_path", "") for item in inbox_files[:5]]
+        suggestions.append(
+            suggestion(
+                "organize_inbox",
+                f"整理 inbox 中 {len(inbox_files)} 个未处理文件，必要时 promote 到任务板并归档源文件。",
+                evidence=evidence,
+                priority=0.91 if not tasks else 0.84,
+            )
+        )
+    if tasks:
+        task = tasks[0]
+        suggestions.append(
+            suggestion(
+                "assist_task",
+                f"优先围绕任务板任务推进：{task.get('title', '')}",
+                evidence=[task.get("task_id", "")],
+                priority=task_priority(task),
+            )
+        )
     if not snapshots:
         suggestions.append(
             suggestion(
@@ -1034,11 +1144,50 @@ def suggestion(kind: str, description: str, *, evidence: list[str], priority: fl
 
 
 def workline_evidence(workline: dict[str, Any]) -> list[str]:
-    for key in ["snapshot_id", "finding_id", "event_id"]:
+    inbox_refs = workline.get("inbox_refs")
+    if inbox_refs:
+        return [str(item) for item in inbox_refs[:5]]
+    for key in ["task_id", "snapshot_id", "finding_id", "event_id"]:
         value = workline.get(key)
         if value:
             return [str(value)]
     return []
+
+
+def task_confidence(task: dict[str, Any]) -> float:
+    status = task.get("status", "")
+    if status == "active":
+        return 0.9
+    if status == "verifying":
+        return 0.86
+    if status == "blocked":
+        return 0.82
+    return 0.78
+
+
+def task_priority(task: dict[str, Any]) -> float:
+    priority = str(task.get("priority") or "").upper()
+    status = task.get("status", "")
+    base = {
+        "P0": 0.98,
+        "P1": 0.92,
+        "P2": 0.82,
+        "P3": 0.7,
+    }.get(priority, 0.76)
+    if status == "active":
+        base += 0.04
+    if status == "blocked":
+        base += 0.02
+    return round(min(base, 0.99), 3)
+
+
+def task_unknowns(task: dict[str, Any]) -> list[str]:
+    unknowns: list[str] = []
+    if not task.get("acceptance"):
+        unknowns.append("任务板未写验收条件。")
+    if not task.get("scope"):
+        unknowns.append("任务板未写 scope，后续证据关联可能较弱。")
+    return unknowns
 
 
 def evaluate_suggestions(
@@ -1069,6 +1218,8 @@ def render_agenda_brief(
     candidates: list[dict[str, Any]],
     conflicts: list[dict[str, Any]],
     snapshots: list[dict[str, Any]],
+    tasks: list[dict[str, Any]],
+    inbox_files: list[dict[str, Any]],
 ) -> str:
     lines = ["# memSu 推进议程", ""]
     if snapshots:
@@ -1076,6 +1227,20 @@ def render_agenda_brief(
         lines.append(f"最新观察：{latest['local_date']} {latest['local_time']} ({latest['snapshot_id']})")
     else:
         lines.append("最新观察：无")
+    lines.append("")
+    lines.append("## 任务板")
+    if tasks:
+        for item in tasks[:5]:
+            claim = f"; claimed_by={item.get('claimed_by')}" if item.get("claimed_by") else ""
+            lines.append(f"- {item['task_id']}: [{item.get('status', '')}] {item.get('title', '')}{claim}")
+    else:
+        lines.append("- 无 active task board items")
+    lines.append("")
+    lines.append("## Inbox")
+    if inbox_files:
+        lines.extend(f"- {item.get('relative_path', '')}" for item in inbox_files[:5])
+    else:
+        lines.append("- 无 unprocessed inbox files")
     lines.append("")
     lines.extend(render_worklines(worklines))
     lines.extend(render_suggestions(suggestions, title="建议"))

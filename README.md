@@ -17,12 +17,19 @@ write the same local SQLite store.
 
 The current product roadmap is [ROADMAP.md](ROADMAP.md). It resets memSu around
 the core loop: user context or cold start, scheduled local observation, a
-manual Markdown task board, assistance analysis, autonomous low-risk
-verification, and state updates.
+messy human inbox, a structured Markdown task board, assistance analysis,
+autonomous low-risk verification, and state updates. Local agents should start
+from `${MEMSU_HOME:-~/.memsu}/AGENTS.md`; see
+[docs/agent-guide.md](docs/agent-guide.md).
 
 Older `PLAN_V2.md`, `PLAN_V3.md`, `PLAN_V4.md`, and `PLAN_AUTO.md` files remain
 as technical design history. New product work should start from the roadmap and
 only drop into those plans when implementation detail is needed.
+
+The roadmap treats personal alignment files and operating principles as
+cold-start user context. Put those files under `${MEMSU_HOME:-~/.memsu}/inspire.md`
+or `inspire.d/*.md`; they should shape the local user's memSu run without
+becoming baked-in product doctrine for every repo user.
 
 ## Core Idea
 
@@ -179,6 +186,8 @@ The installer should:
 - copy memSu skills into the Hermes skills directory
 - initialize the local memSu data directory and SQLite database
 - write the default policy file
+- create the local `AGENTS.md` guide, human inbox, inbox archive, inspire files,
+  observe directory, and task board
 - avoid Hermes config mutation unless the user explicitly requests it
 - keep proactive external actions disabled by default
 
@@ -251,8 +260,11 @@ python -m memsu init
 ```
 
 Initialization creates the SQLite store, policy file, observe directory,
-discovery manifests, and a user-editable V3 inspire file at
-`${MEMSU_HOME:-~/.memsu}/inspire.md`.
+discovery manifests, a local agent guide at
+`${MEMSU_HOME:-~/.memsu}/AGENTS.md`, a user-editable V3 inspire file at
+`${MEMSU_HOME:-~/.memsu}/inspire.md`, a messy human inbox at
+`${MEMSU_HOME:-~/.memsu}/inbox/`, and a structured task board at
+`${MEMSU_HOME:-~/.memsu}/tasks.md`.
 
 Run a smoke test:
 
@@ -260,6 +272,18 @@ Run a smoke test:
 python -m memsu doctor
 python -m memsu status
 ```
+
+Inspect the local agent guide:
+
+```powershell
+python -m memsu guide path
+python -m memsu guide show
+python -m memsu guide init --force
+```
+
+`AGENTS.md` is user-editable and is the first file another agent should read in
+`${MEMSU_HOME:-~/.memsu}`. It explains the read order, inbox promotion, task
+claiming, evidence recording, and risk boundaries.
 
 Add and recall memory:
 
@@ -297,6 +321,44 @@ python -m memsu adapter workflow --name tests --status passed --summary "unit te
 
 See [docs/adapters.md](docs/adapters.md) for adapter details.
 
+Drop rough human notes into the inbox before they become structured tasks:
+
+```powershell
+python -m memsu inbox init
+python -m memsu inbox path
+python -m memsu inbox list
+python -m memsu inbox add --title "Future R5 idea" --content "advance run should be model-led"
+python -m memsu inbox promote future-r5.md --title "Implement model-led R5 advance run" --scope project:memSu --acceptance "low-risk result is audited"
+```
+
+The inbox is `${MEMSU_HOME:-~/.memsu}/inbox/`. Humans can write messy Markdown
+or text there; agents promote concrete tasks into `tasks.md` and archive source
+files under `${MEMSU_HOME:-~/.memsu}/inbox/archive/`. See
+[docs/inbox.md](docs/inbox.md).
+
+Manage the local Markdown task board:
+
+```powershell
+python -m memsu task init
+python -m memsu task path
+python -m memsu task list
+python -m memsu task show <task_id>
+python -m memsu task claim <task_id> --agent codex --lease 2h
+python -m memsu task release <task_id> --agent codex
+python -m memsu task update <task_id> --status verifying --note "verification started"
+```
+
+The task board is `${MEMSU_HOME:-~/.memsu}/tasks.md`. Users can edit it
+directly, but rough material should usually start in the inbox. memSu parses
+status, priority, scope, context, source, claim fields, blockers, and
+acceptance bullets. Claiming a task does not change status; it writes
+`claimed_by`, `claimed_at`, and `claim_until` so agents can coordinate without
+inventing an `in_progress` status. See [docs/tasks.md](docs/tasks.md).
+
+memSu does not execute a task merely because it appears in `tasks.md`. Execution
+happens when a user manually asks an agent, an agent chooses work from
+`advance agenda`, or a configured scheduler/Hermes workflow delegates it.
+
 Run a local observe snapshot:
 
 ```powershell
@@ -322,8 +384,9 @@ python -m memsu advance worklines
 python -m memsu advance opportunities
 ```
 
-Advance reads existing observations, findings, candidates, conflicts, summaries,
-and events, then produces policy-gated suggestions. See
+Advance reads existing observations, the human inbox, the Markdown task board,
+findings, candidates, conflicts, summaries, and events, then produces
+policy-gated suggestions. See
 [docs/advance.md](docs/advance.md).
 
 V3 planning explores an agent-led observe mode where the model chooses safe
@@ -420,10 +483,16 @@ Implemented:
 - scoped memory items
 - CLI-first status and discovery manifests
 - observe snapshots written to `${MEMSU_HOME:-~/.memsu}/observe/YYYY-MM-DD.md`
+- user-editable `${MEMSU_HOME:-~/.memsu}/AGENTS.md` local agent guide with
+  `guide init`, `guide path`, and `guide show`
 - V3 user-editable `${MEMSU_HOME:-~/.memsu}/inspire.md` and `inspire.d/*.md`
+- user-editable `${MEMSU_HOME:-~/.memsu}/inbox/` for rough human notes, with
+  `inbox promote` archiving sources under `inbox/archive/`
+- user-owned `${MEMSU_HOME:-~/.memsu}/tasks.md` task board with `task init`,
+  `task list`, `task show`, `task claim`, `task release`, and `task update`
 - V3 observation run, evidence reference, and finding tables
 - initial `observe agent` planning entrypoint
-- skill/adapter-controlled `advance` kernel with capability registry, agenda generation, skill/adapter invocation, advancement history, repeated-workline detection, and optional LLM ranking
+- skill/adapter-controlled `advance` kernel with capability registry, inbox/task-board-aware agenda generation, skill/adapter invocation, advancement history, repeated-workline detection, and optional LLM ranking
 - rule-based and optional OpenAI-compatible LLM candidate extraction from events
 - candidate accept and reject flow
 - possible conflict hints for similar same-scope memories
@@ -431,7 +500,7 @@ Implemented:
 - L0-L4 proactive policy engine with action proposals, configurable rate limits, quiet-hour deferral, and policy event log
 - curator jobs for dedupe, stale detection, summaries, and conflict review queue
 - production hardening tools for migration status, backup, export, privacy review, and sparse vector recall
-- CLI commands for init, status, doctor, observe, event append/list, extract, candidate review, retain, recall, audit, and forget
+- CLI commands for init, status, doctor, guide, inbox, task, observe, event append/list, extract, candidate review, retain, recall, audit, and forget
 - Hermes memory skills
 - bootstrap prompt
 - PowerShell installer and doctor scripts
