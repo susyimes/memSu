@@ -5,10 +5,10 @@ import os
 import re
 import sqlite3
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .paths import default_observe_dir
 from .inspire import inspire_status
@@ -16,6 +16,7 @@ from .store import MemSuStore
 
 
 TZ_NAME = "Asia/Shanghai"
+TZ_FALLBACK = timezone(timedelta(hours=8), TZ_NAME)
 SENSITIVE_NAME_RE = re.compile(
     r"(^|[._-])("
     r"auth|oauth|credentials?|creds?|cookies?|passwords?|secrets?|tokens?|"
@@ -26,6 +27,13 @@ SENSITIVE_NAME_RE = re.compile(
     r"(id_rsa|id_dsa|id_ecdsa|id_ed25519|\.pem$|\.p12$|\.pfx$)",
     re.IGNORECASE,
 )
+
+
+def local_timezone():
+    try:
+        return ZoneInfo(TZ_NAME)
+    except ZoneInfoNotFoundError:
+        return TZ_FALLBACK
 
 
 @dataclass
@@ -50,9 +58,10 @@ def run_observe(
 ) -> dict[str, Any]:
     store = store or MemSuStore()
     store.init()
-    local_now = now or datetime.now(ZoneInfo(TZ_NAME))
+    tz = local_timezone()
+    local_now = now or datetime.now(tz)
     if local_now.tzinfo is None:
-        local_now = local_now.replace(tzinfo=ZoneInfo(TZ_NAME))
+        local_now = local_now.replace(tzinfo=tz)
     evidence_root = Path(evidence_home).expanduser().resolve() if evidence_home else Path.home()
 
     reports = collect_source_reports(evidence_root, local_now)

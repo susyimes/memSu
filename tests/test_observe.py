@@ -4,11 +4,12 @@ import os
 import sqlite3
 import tempfile
 import unittest
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
-from zoneinfo import ZoneInfo
+from unittest.mock import patch
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from memsu.observe import is_sensitive_path, openclaw_runs_fact, resolve_hermes_root, run_observe
+from memsu.observe import is_sensitive_path, local_timezone, openclaw_runs_fact, resolve_hermes_root, run_observe
 from memsu.store import MemSuStore
 
 
@@ -89,6 +90,13 @@ class ObserveTests(unittest.TestCase):
         for name in sensitive_names:
             with self.subTest(name=name):
                 self.assertTrue(is_sensitive_path(Path(name)))
+
+    def test_local_timezone_falls_back_to_utc_plus_eight_without_tzdata(self) -> None:
+        with patch("memsu.observe.ZoneInfo", side_effect=ZoneInfoNotFoundError("missing")):
+            tz = local_timezone()
+
+        self.assertEqual(timedelta(hours=8), tz.utcoffset(None))
+        self.assertEqual("Asia/Shanghai", tz.tzname(None))
 
     def test_openclaw_runs_fact_reads_sqlite_without_sidecars(self) -> None:
         runs_db = self.root / "runs.sqlite"
