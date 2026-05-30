@@ -341,6 +341,16 @@ python -m memsu curator conflicts
 
 See [docs/curator.md](docs/curator.md) for curator details.
 
+Generate a policy-gated advancement agenda from existing observations and
+memory state:
+
+```powershell
+python -m memsu advance agenda
+```
+
+See [docs/advance.md](docs/advance.md) for the deterministic Auto 0.1 agenda
+loop.
+
 Run hardening tools:
 
 ```powershell

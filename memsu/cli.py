@@ -12,6 +12,7 @@ from .adapters import (
     record_workflow_result,
     snapshot_git_repo,
 )
+from .advance import run_advance_agenda
 from .discovery import ensure_discovery_files, status_payload
 from .agent_observe import run_agent_observe
 from .inspire import ensure_inspire_files, inspire_status, read_inspire
@@ -447,6 +448,16 @@ def cmd_observe_agent(args: argparse.Namespace) -> int:
     return 0 if result.get("ok") else 1
 
 
+def cmd_advance_agenda(args: argparse.Namespace) -> int:
+    result = run_advance_agenda(
+        MemSuStore(args.db),
+        limit=args.limit,
+        record=not args.no_record,
+    )
+    print_json(result)
+    return 0
+
+
 def cmd_retain(args: argparse.Namespace) -> int:
     metadata = json.loads(args.metadata) if args.metadata else {}
     result = MemSuStore(args.db).retain_memory(
@@ -724,6 +735,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_observe_findings.add_argument("--status", default="")
     p_observe_findings.add_argument("--limit", type=int, default=50)
     p_observe_findings.set_defaults(func=cmd_observe_findings)
+
+    p_advance = sub.add_parser("advance", help="Generate policy-gated advancement agendas")
+    advance_sub = p_advance.add_subparsers(dest="advance_command", required=True)
+    p_advance_agenda = advance_sub.add_parser("agenda", help="Generate an agenda from current memSu state")
+    p_advance_agenda.add_argument("--limit", type=int, default=5)
+    p_advance_agenda.add_argument("--no-record", action="store_true", help="Do not record the agenda workflow event")
+    p_advance_agenda.set_defaults(func=cmd_advance_agenda)
 
     p_retain = sub.add_parser("retain", help="Retain a memory item")
     p_retain.add_argument("content")

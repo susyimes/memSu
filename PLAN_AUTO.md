@@ -67,6 +67,11 @@ Command meanings:
 - `advance run --mode suggest`: produce L2 suggestions and L3 action proposals,
   but do not execute L3 actions.
 
+The Auto 0.1 implementation contract is maintained in
+[`docs/advance.md`](docs/advance.md). It deliberately avoids new schema and
+uses existing snapshots, findings, candidates, conflicts, summaries, events,
+policy proposals, and workflow-result events.
+
 ## Data Model
 
 Initial tables can be added after the design proves useful:
